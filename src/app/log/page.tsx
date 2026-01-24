@@ -60,6 +60,25 @@ export default function LogPage() {
     }
   }
 
+  const handleDelete = async (id: string) => {
+    if (!confirm('Delete this entry?')) return
+
+    try {
+      const response = await fetch(`/api/log?id=${id}`, { method: 'DELETE' })
+      if (response.ok) {
+        fetchTodaysLogs()
+        if (latestResult?.id === id) {
+          setLatestResult(null)
+        }
+      } else {
+        alert('Failed to delete')
+      }
+    } catch (error) {
+      console.error('Delete error:', error)
+      alert('Something went wrong')
+    }
+  }
+
   // Calculate today's totals
   const todaysTotals = todaysLogs.reduce(
     (acc, log) => ({
@@ -133,9 +152,18 @@ export default function LogPage() {
             {todaysLogs.map((log) => (
               <div
                 key={log.id}
-                className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-4"
+                className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-4 group"
               >
-                <p className="text-[var(--foreground)] mb-3">{log.raw_input}</p>
+                <div className="flex justify-between items-start gap-2 mb-3">
+                  <p className="text-[var(--foreground)]">{log.raw_input}</p>
+                  <button
+                    onClick={() => handleDelete(log.id)}
+                    className="opacity-0 group-hover:opacity-100 text-[var(--muted)] hover:text-[var(--error)] transition-opacity text-lg leading-none"
+                    title="Delete entry"
+                  >
+                    ×
+                  </button>
+                </div>
                 <div className="flex flex-wrap gap-4 text-sm">
                   <span className="text-[var(--accent)] font-medium macro-value">
                     {log.total_calories} kcal
