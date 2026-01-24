@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { MacroCard } from '@/components/MacroCard'
 import { InsightCard } from '@/components/InsightCard'
+import { TargetProgress } from '@/components/TargetProgress'
 import { Button } from '@/components/ui/Button'
 import { FoodLog } from '@/lib/supabase'
 
@@ -80,11 +81,12 @@ export default function LogPage() {
 
       {/* Today's Total */}
       {todaysLogs.length > 0 && (
-        <div>
-          <h2 className="text-sm font-medium text-[var(--muted)] mb-3 uppercase tracking-wide">
+        <div className="space-y-4">
+          <h2 className="text-sm font-medium text-[var(--muted)] uppercase tracking-wide">
             Today&apos;s Total
           </h2>
           <MacroCard {...todaysTotals} size="lg" />
+          <TargetProgress {...todaysTotals} />
         </div>
       )}
 
