@@ -6,7 +6,7 @@ export async function parseFood(rawInput: string): Promise<{
   meals: { name: string; calories: number; protein: number; carbs: number; fat: number }[]
   total: { calories: number; protein: number; carbs: number; fat: number }
 }> {
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-preview-05-20' })
 
   const prompt = `You are a nutrition expert. Parse this food log into structured data.
 
@@ -43,7 +43,7 @@ Be accurate but reasonable. If multiple items, sum them for total.`
 export async function getNerdyInsights(
   meals: { name: string; calories: number; protein: number; carbs: number; fat: number }[]
 ): Promise<string> {
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-preview-05-20' })
 
   const mealsList = meals.map(m => m.name).join(', ')
 
@@ -78,7 +78,7 @@ export async function generateWeeklyAnalysis(
   missing_nutrients: string[]
   recommendations: string[]
 }> {
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-preview-05-20' })
 
   const logsText = logs.map(log =>
     `${log.date}: ${log.parsed_meals.map(m => m.name).join(', ')} (${log.total_calories} cal, ${log.total_protein}g protein)`
