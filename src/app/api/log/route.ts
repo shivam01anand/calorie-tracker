@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error('Supabase error:', error)
-      return NextResponse.json({ error: 'Failed to save log' }, { status: 500 })
+      return NextResponse.json({ error: 'Failed to save log', details: error.message, code: error.code }, { status: 500 })
     }
 
     return NextResponse.json(data)
