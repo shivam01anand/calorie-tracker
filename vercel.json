@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/check-streak",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/weekly-analysis",
+      "schedule": "0 20 * * 0"
+    }
+  ]
+}
