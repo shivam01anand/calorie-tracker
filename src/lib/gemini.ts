@@ -4,7 +4,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
 const genAIFallback = new GoogleGenerativeAI(process.env.GEMINI_API_KEY_ALT || 'AIzaSyAAPRgpKCePR4rPz-IAr0y6_zpSUySAxsI')
 
 async function generateWithFallback(prompt: string): Promise<string> {
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
 
   try {
     const result = await model.generateContent(prompt)
@@ -14,7 +14,7 @@ async function generateWithFallback(prompt: string): Promise<string> {
     if (err.status === 429) {
       // Rate limited - try fallback key
       console.log('Primary key rate limited, trying fallback...')
-      const fallbackModel = genAIFallback.getGenerativeModel({ model: 'gemini-2.0-flash' })
+      const fallbackModel = genAIFallback.getGenerativeModel({ model: 'gemini-2.5-flash' })
       const result = await fallbackModel.generateContent(prompt)
       return result.response.text()
     }
