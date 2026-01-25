@@ -1,13 +1,31 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
+const genAIFallback = new GoogleGenerativeAI(process.env.GEMINI_API_KEY_ALT || 'AIzaSyAAPRgpKCePR4rPz-IAr0y6_zpSUySAxsI')
+
+async function generateWithFallback(prompt: string): Promise<string> {
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
+
+  try {
+    const result = await model.generateContent(prompt)
+    return result.response.text()
+  } catch (error: unknown) {
+    const err = error as { status?: number }
+    if (err.status === 429) {
+      // Rate limited - try fallback key
+      console.log('Primary key rate limited, trying fallback...')
+      const fallbackModel = genAIFallback.getGenerativeModel({ model: 'gemini-2.0-flash' })
+      const result = await fallbackModel.generateContent(prompt)
+      return result.response.text()
+    }
+    throw error
+  }
+}
 
 export async function parseFood(rawInput: string): Promise<{
   meals: { name: string; calories: number; protein: number; carbs: number; fat: number }[]
   total: { calories: number; protein: number; carbs: number; fat: number }
 }> {
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
-
   const prompt = `You are a nutrition expert. Parse this food log into structured data.
 
 Input: "${rawInput}"
@@ -23,8 +41,7 @@ Return ONLY valid JSON (no markdown, no code blocks, just raw JSON):
 Consider Indian food portions (dal ~150cal, roti ~80cal, rice cup ~200cal, chicken curry ~300cal, etc).
 Be accurate but reasonable. If multiple items, sum them for total.`
 
-  const result = await model.generateContent(prompt)
-  const response = result.response.text()
+  const response = await generateWithFallback(prompt)
 
   // Clean up response - remove markdown code blocks if present
   const cleanedResponse = response.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
@@ -43,8 +60,6 @@ Be accurate but reasonable. If multiple items, sum them for total.`
 export async function getNerdyInsights(
   meals: { name: string; calories: number; protein: number; carbs: number; fat: number }[]
 ): Promise<string> {
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
-
   const mealsList = meals.map(m => m.name).join(', ')
 
   const prompt = `You are a nutrition scientist who explains food benefits in exciting, nerdy detail.
@@ -67,8 +82,7 @@ If something could be added for better results, suggest it briefly.
 Tone: excited nerd who genuinely finds this fascinating, not preachy doctor.
 Keep it punchy - 3-4 sentences max per insight.`
 
-  const result = await model.generateContent(prompt)
-  return result.response.text()
+  return generateWithFallback(prompt)
 }
 
 export async function getMacroAnalysis(
@@ -76,8 +90,6 @@ export async function getMacroAnalysis(
   totals: { calories: number; protein: number; carbs: number; fat: number },
   targets: { calories: number; protein: number; carbs: number; fat: number }
 ): Promise<string> {
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
-
   const mealsBreakdown = meals.map(m =>
     `${m.name}: ${m.calories}cal, ${m.protein}g P, ${m.carbs}g C, ${m.fat}g F`
   ).join('\n')
@@ -100,8 +112,8 @@ Examples of good responses:
 
 Be specific about THE food item. No generic advice. One sentence only.`
 
-  const result = await model.generateContent(prompt)
-  return result.response.text().trim()
+  const response = await generateWithFallback(prompt)
+  return response.trim()
 }
 
 export async function generateWeeklyAnalysis(
@@ -111,8 +123,6 @@ export async function generateWeeklyAnalysis(
   missing_nutrients: string[]
   recommendations: string[]
 }> {
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
-
   const logsText = logs.map(log =>
     `${log.date}: ${log.parsed_meals.map(m => m.name).join(', ')} (${log.total_calories} cal, ${log.total_protein}g protein)`
   ).join('\n')
@@ -132,8 +142,7 @@ Return ONLY valid JSON (no markdown, no code blocks):
 End the analysis with one harsh motivational line about turning 30 and building the dream body.
 Be specific. Cite mechanisms. Real-world outcomes only. No generic advice.`
 
-  const result = await model.generateContent(prompt)
-  const response = result.response.text()
+  const response = await generateWithFallback(prompt)
   const cleanedResponse = response.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
 
   try {
