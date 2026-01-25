@@ -6,15 +6,20 @@ import { InsightCard } from '@/components/InsightCard'
 import { TargetProgress } from '@/components/TargetProgress'
 import { Button } from '@/components/ui/Button'
 import { FoodLog } from '@/lib/supabase'
+import { formatDate } from '@/lib/utils'
 
 export default function LogPage() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [todaysLogs, setTodaysLogs] = useState<FoodLog[]>([])
+  const [allLogs, setAllLogs] = useState<FoodLog[]>([])
   const [latestResult, setLatestResult] = useState<FoodLog | null>(null)
+
+  const today = formatDate(new Date())
 
   useEffect(() => {
     fetchTodaysLogs()
+    fetchAllLogs()
   }, [])
 
   const fetchTodaysLogs = async () => {
@@ -28,6 +33,27 @@ export default function LogPage() {
       console.error('Failed to fetch logs:', error)
     }
   }
+
+  const fetchAllLogs = async () => {
+    try {
+      const response = await fetch('/api/log/all')
+      if (response.ok) {
+        const data = await response.json()
+        setAllLogs(data)
+      }
+    } catch (error) {
+      console.error('Failed to fetch all logs:', error)
+    }
+  }
+
+  // Group logs by date
+  const pastLogs = allLogs.filter(log => log.date !== today)
+  const logsByDate = pastLogs.reduce((acc, log) => {
+    if (!acc[log.date]) acc[log.date] = []
+    acc[log.date].push(log)
+    return acc
+  }, {} as Record<string, FoodLog[]>)
+  const sortedDates = Object.keys(logsByDate).sort((a, b) => new Date(b).getTime() - new Date(a).getTime())
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -183,6 +209,52 @@ export default function LogPage() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Past Entries */}
+      {sortedDates.length > 0 && (
+        <div>
+          <h2 className="text-sm font-medium text-[var(--muted)] mb-4 uppercase tracking-wide">
+            Past Entries
+          </h2>
+          <div className="max-h-96 overflow-y-auto space-y-6 pr-2">
+            {sortedDates.map((date) => {
+              const logs = logsByDate[date]
+              const dayTotal = logs.reduce((sum, log) => sum + log.total_calories, 0)
+              const dateObj = new Date(date)
+              const displayDate = dateObj.toLocaleDateString('en-US', {
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric'
+              })
+
+              return (
+                <div key={date} className="space-y-2">
+                  <div className="flex justify-between items-center sticky top-0 bg-[var(--background)] py-1">
+                    <span className="text-sm font-medium text-[var(--foreground)]">{displayDate}</span>
+                    <span className="text-sm text-[var(--accent)]">{dayTotal} kcal</span>
+                  </div>
+                  <div className="space-y-2">
+                    {logs.map((log) => (
+                      <div
+                        key={log.id}
+                        className="bg-[var(--surface)] border border-[var(--border)] rounded-lg p-3 text-sm"
+                      >
+                        <p className="text-[var(--foreground)] mb-2">{log.raw_input}</p>
+                        <div className="flex flex-wrap gap-3 text-xs">
+                          <span className="text-[var(--accent)]">{log.total_calories} kcal</span>
+                          <span className="text-[var(--muted)]">{log.total_protein}g P</span>
+                          <span className="text-[var(--muted)]">{log.total_carbs}g C</span>
+                          <span className="text-[var(--muted)]">{log.total_fat}g F</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </div>
       )}
