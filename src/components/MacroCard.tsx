@@ -18,7 +18,7 @@ export function MacroCard({ calories, protein, carbs, fat, size = 'md' }: MacroC
   const numberClasses = {
     sm: 'text-lg',
     md: 'text-2xl',
-    lg: 'text-4xl',
+    lg: 'text-3xl sm:text-4xl',
   }
 
   const labelClasses = {
@@ -29,7 +29,7 @@ export function MacroCard({ calories, protein, carbs, fat, size = 'md' }: MacroC
 
   return (
     <div className={`bg-[var(--surface)] rounded-xl border border-[var(--border)] ${sizeClasses[size]}`}>
-      <div className="grid grid-cols-4 gap-4 text-center">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
         <div>
           <div className={`macro-value font-bold text-[var(--accent)] ${numberClasses[size]}`}>
             {calories}
