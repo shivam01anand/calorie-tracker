@@ -90,6 +90,9 @@ export default function LogPage() {
     { calories: 0, protein: 0, carbs: 0, fat: 0 }
   )
 
+  // Aggregate all meals for smart analysis
+  const allMeals = todaysLogs.flatMap(log => log.parsed_meals || [])
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -105,7 +108,7 @@ export default function LogPage() {
             Today&apos;s Total
           </h2>
           <MacroCard {...todaysTotals} size="lg" />
-          <TargetProgress {...todaysTotals} />
+          <TargetProgress {...todaysTotals} meals={allMeals} />
         </div>
       )}
 

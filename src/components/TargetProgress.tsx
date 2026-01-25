@@ -1,9 +1,8 @@
 'use client'
 
+import { useState, useEffect } from 'react'
+
 // Targets based on: 69kg, muscle gain, ~2500 cal
-// Protein: 1.7g/kg = 117g
-// Fat: ~0.9g/kg = 62g
-// Carbs: remaining cals = ~340g
 const TARGETS = {
   calories: 2500,
   protein: 117,  // 1.7g × 69kg
@@ -11,14 +10,55 @@ const TARGETS = {
   fat: 62,
 }
 
-interface TargetProgressProps {
+interface Meal {
+  name: string
   calories: number
   protein: number
   carbs: number
   fat: number
 }
 
-export function TargetProgress({ calories, protein, carbs, fat }: TargetProgressProps) {
+interface TargetProgressProps {
+  calories: number
+  protein: number
+  carbs: number
+  fat: number
+  meals?: Meal[]
+}
+
+export function TargetProgress({ calories, protein, carbs, fat, meals = [] }: TargetProgressProps) {
+  const [smartTip, setSmartTip] = useState<string | null>(null)
+  const [loadingTip, setLoadingTip] = useState(false)
+
+  // Fetch smart analysis when meals change
+  useEffect(() => {
+    if (meals.length > 0) {
+      fetchSmartTip()
+    }
+  }, [meals.length, calories, protein, carbs, fat])
+
+  const fetchSmartTip = async () => {
+    setLoadingTip(true)
+    try {
+      const response = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          meals,
+          totals: { calories, protein, carbs, fat }
+        }),
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setSmartTip(data.analysis)
+      }
+    } catch (error) {
+      console.error('Failed to fetch analysis:', error)
+    } finally {
+      setLoadingTip(false)
+    }
+  }
+
   const getStatus = (current: number, target: number, type: 'cal' | 'protein' | 'carbs' | 'fat') => {
     const percent = (current / target) * 100
 
@@ -56,38 +96,16 @@ export function TargetProgress({ calories, protein, carbs, fat }: TargetProgress
   const carbStatus = getStatus(carbs, TARGETS.carbs, 'carbs')
   const fatStatus = getStatus(fat, TARGETS.fat, 'fat')
 
-  // Overall verdict
-  const getVerdict = () => {
-    const calPct = (calories / TARGETS.calories) * 100
-    const proPct = (protein / TARGETS.protein) * 100
-    const carbPct = (carbs / TARGETS.carbs) * 100
-    const fatPct = (fat / TARGETS.fat) * 100
+  // Find which macro is most off-target
+  const fatPercent = (fat / TARGETS.fat) * 100
+  const proPercent = (protein / TARGETS.protein) * 100
 
-    if (proPct < 70) {
-      return { message: "Protein way too low. You're leaving gains on the table.", type: 'bad' }
-    }
-    if (proPct < 85 && calPct >= 80) {
-      return { message: "Eating enough but protein is low. Add chicken, eggs, or paneer.", type: 'warning' }
-    }
-    if (calPct < 75) {
-      return { message: "Under-eating. Your body needs fuel to build muscle.", type: 'bad' }
-    }
-    if (fatPct > 140 && calPct > 100) {
-      return { message: "Fat is high. Not bad, but watch the oily stuff.", type: 'warning' }
-    }
-    if (calPct >= 90 && calPct <= 115 && proPct >= 90 && proPct <= 130) {
-      return { message: "Solid day. You're feeding the machine right.", type: 'good' }
-    }
-    if (calPct > 130) {
-      return { message: "Heavy surplus. Good for bulking, watch fat gain.", type: 'warning' }
-    }
-    if (carbPct < 60 && proPct >= 90) {
-      return { message: "Low carb day. Fine occasionally, but carbs fuel workouts.", type: 'ok' }
-    }
-    return { message: "Decent day. Keep pushing.", type: 'ok' }
-  }
+  // Sort meals by the problematic macro
+  const sortedByFat = [...meals].sort((a, b) => b.fat - a.fat)
+  const sortedByProtein = [...meals].sort((a, b) => b.protein - a.protein)
 
-  const verdict = getVerdict()
+  const showFatBreakdown = fatPercent > 120
+  const showProteinBreakdown = proPercent < 85
 
   const MacroBar = ({
     label,
@@ -143,23 +161,42 @@ export function TargetProgress({ calories, protein, carbs, fat }: TargetProgress
         <MacroBar label="Fat" current={fat} target={TARGETS.fat} unit="g" status={fatStatus} />
       </div>
 
-      {/* Verdict */}
-      <div
-        className={`p-3 rounded-lg text-sm ${
-          verdict.type === 'good'
-            ? 'bg-[var(--success)]/10 text-[var(--success)]'
-            : verdict.type === 'ok'
-            ? 'bg-[var(--accent)]/10 text-[var(--accent)]'
-            : verdict.type === 'warning'
-            ? 'bg-[var(--warning)]/10 text-[var(--warning)]'
-            : 'bg-[var(--error)]/10 text-[var(--error)]'
-        }`}
-      >
-        {verdict.message}
-      </div>
+      {/* Smart AI Tip */}
+      {(loadingTip || smartTip) && (
+        <div className="p-3 rounded-lg bg-[var(--accent)]/10 border border-[var(--accent)]/20">
+          <div className="flex items-start gap-2">
+            <span className="text-sm">💡</span>
+            <p className="text-sm text-[var(--foreground)]">
+              {loadingTip ? 'Analyzing...' : smartTip}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Per-food breakdown for problematic macros */}
+      {meals.length > 1 && (showFatBreakdown || showProteinBreakdown) && (
+        <div className="pt-2 border-t border-[var(--border)]">
+          <p className="text-xs text-[var(--muted)] mb-2">
+            {showFatBreakdown ? 'Fat contributors:' : 'Protein sources:'}
+          </p>
+          <div className="space-y-1">
+            {(showFatBreakdown ? sortedByFat : sortedByProtein).slice(0, 3).map((meal, i) => (
+              <div key={i} className="flex justify-between text-xs">
+                <span className="text-[var(--foreground)] truncate mr-2">{meal.name}</span>
+                <span className="text-[var(--muted)] macro-value whitespace-nowrap">
+                  {showFatBreakdown
+                    ? `${meal.fat}g fat`
+                    : `${meal.protein}g protein`
+                  }
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="text-xs text-[var(--muted)] text-center">
-        Protein target: 1.7g × 69kg = {TARGETS.protein}g
+        Protein: 1.7g × 69kg = {TARGETS.protein}g
       </div>
     </div>
   )

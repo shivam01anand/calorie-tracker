@@ -71,6 +71,39 @@ Keep it punchy - 3-4 sentences max per insight.`
   return result.response.text()
 }
 
+export async function getMacroAnalysis(
+  meals: { name: string; calories: number; protein: number; carbs: number; fat: number }[],
+  totals: { calories: number; protein: number; carbs: number; fat: number },
+  targets: { calories: number; protein: number; carbs: number; fat: number }
+): Promise<string> {
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
+
+  const mealsBreakdown = meals.map(m =>
+    `${m.name}: ${m.calories}cal, ${m.protein}g P, ${m.carbs}g C, ${m.fat}g F`
+  ).join('\n')
+
+  const prompt = `You're a concise nutrition coach. Analyze today's food for a muscle gain goal.
+
+Foods eaten:
+${mealsBreakdown}
+
+Today's totals: ${totals.calories}cal, ${totals.protein}g protein, ${totals.carbs}g carbs, ${totals.fat}g fat
+Targets: ${targets.calories}cal, ${targets.protein}g protein, ${targets.carbs}g carbs, ${targets.fat}g fat
+
+Give ONE short, actionable sentence (max 15 words) identifying which specific food caused the biggest issue OR what was done well.
+
+Examples of good responses:
+- "Chole bhature pushed fat to 158%. Swap for tandoori chicken."
+- "Protein at 65% - add 2 eggs or a protein shake."
+- "Great protein from chicken curry. Fat is fine, keep it up."
+- "Paratha drove carbs up. Try roti instead for lower calories."
+
+Be specific about THE food item. No generic advice. One sentence only.`
+
+  const result = await model.generateContent(prompt)
+  return result.response.text().trim()
+}
+
 export async function generateWeeklyAnalysis(
   logs: { date: string; parsed_meals: { name: string }[]; total_calories: number; total_protein: number }[]
 ): Promise<{
