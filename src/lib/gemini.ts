@@ -60,7 +60,8 @@ Be accurate but reasonable. If multiple items, sum them for total.`
 export async function getNerdyInsights(
   meals: { name: string; calories: number; protein: number; carbs: number; fat: number }[]
 ): Promise<string> {
-  const mealsList = meals.map(m => m.name).join(', ')
+  const safeMeals = Array.isArray(meals) ? meals : []
+  const mealsList = safeMeals.map(m => m.name).join(', ')
 
   const prompt = `You are a nutrition scientist who explains food benefits in exciting, nerdy detail.
 
@@ -90,7 +91,8 @@ export async function getMacroAnalysis(
   totals: { calories: number; protein: number; carbs: number; fat: number },
   targets: { calories: number; protein: number; carbs: number; fat: number }
 ): Promise<string> {
-  const mealsBreakdown = meals.map(m =>
+  const safeMeals = Array.isArray(meals) ? meals : []
+  const mealsBreakdown = safeMeals.map(m =>
     `${m.name}: ${m.calories}cal, ${m.protein}g P, ${m.carbs}g C, ${m.fat}g F`
   ).join('\n')
 
@@ -123,8 +125,11 @@ export async function generateWeeklyAnalysis(
   missing_nutrients: string[]
   recommendations: string[]
 }> {
-  const logsText = logs.map(log =>
-    `${log.date}: ${log.parsed_meals.map(m => m.name).join(', ')} (${log.total_calories} cal, ${log.total_protein}g protein)`
+  const safeLogs = Array.isArray(logs) ? logs : []
+  const logsText = safeLogs.map(log => {
+    const meals = Array.isArray(log.parsed_meals) ? log.parsed_meals : []
+    return `${log.date}: ${meals.map(m => m.name).join(', ')} (${log.total_calories} cal, ${log.total_protein}g protein)`
+  }
   ).join('\n')
 
   const prompt = `Analyze this week's food logs for a 29yo male (69kg, 177cm) aiming for muscle gain.

@@ -12,6 +12,7 @@ export async function POST(request: NextRequest) {
     }
 
     const logDate = date || formatDate(new Date())
+    console.log('POST /api/log', { hasRawInput: !!raw_input, date: logDate })
 
     // Parse food with Gemini
     const parsed = await parseFood(raw_input)
@@ -42,7 +43,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(data)
   } catch (error) {
-    console.error('API error:', error)
+    const err = error as { message?: string; stack?: string }
+    console.error('API error (POST /api/log):', { message: err?.message, stack: err?.stack })
     return NextResponse.json({ error: 'Something went wrong' }, { status: 500 })
   }
 }
@@ -65,7 +67,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(data)
   } catch (error) {
-    console.error('API error:', error)
+    const err = error as { message?: string; stack?: string }
+    console.error('API error (GET /api/log):', { message: err?.message, stack: err?.stack })
     return NextResponse.json({ error: 'Something went wrong' }, { status: 500 })
   }
 }
@@ -91,7 +94,8 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('API error:', error)
+    const err = error as { message?: string; stack?: string }
+    console.error('API error (DELETE /api/log):', { message: err?.message, stack: err?.stack })
     return NextResponse.json({ error: 'Something went wrong' }, { status: 500 })
   }
 }
