@@ -16,12 +16,24 @@ export async function sendSlackMessage(message: string): Promise<boolean> {
   }
 }
 
-export async function sendMissedDayNudge(siteUrl: string): Promise<boolean> {
-  const messages = [
-    `You didn't log yesterday. 🫠\n\nYou're turning 30. You ran a marathon and can't even track what you eat?\n\nThe body that carried you through 42km deserves better. Log today: ${siteUrl}/log`,
-    `No food log yesterday. 😤\n\nYou want that dream body but can't spend 30 seconds logging?\n\nEvery meal untracked is a meal that didn't count toward your goal. Fix it: ${siteUrl}/log`,
-    `Missed a day. The streak is broken. 💀\n\nYou know what separates people who get abs from people who don't? Consistency.\n\nGet back on track: ${siteUrl}/log`,
-  ]
+export async function sendMissedDayNudge(siteUrl: string, streakBefore: number): Promise<boolean> {
+  // Pride + identity-based nudges — reinforce who you're becoming, not what you missed
+  const messages =
+    streakBefore >= 7
+      ? [
+          `${streakBefore}-day streak was real. That's not luck — that's discipline.\n\nYesterday broke it. Today decides if it was a slip or a slide.\n\nLog now: ${siteUrl}/log`,
+          `${streakBefore} days straight. The version of you that did that is still here.\n\nOne log. Prove it wasn't a fluke: ${siteUrl}/log`,
+        ]
+      : streakBefore >= 3
+        ? [
+            `${streakBefore} days logged before yesterday. That's momentum.\n\nThe ADHD brain wants you to quit now. Don't give it the satisfaction.\n\nLog today: ${siteUrl}/log`,
+            `You had ${streakBefore} days going. Most people never start.\n\nThe gap between you and the body you want is just this one log: ${siteUrl}/log`,
+          ]
+        : [
+            `Yesterday's empty. Today isn't — yet.\n\nYou don't need a streak to start. You need one log to build one.\n\n30 seconds: ${siteUrl}/log`,
+            `No log yesterday. Doesn't matter.\n\nThe man who hits $1M and sculpts his body isn't the one who never missed — he's the one who came back every time.\n\nCome back: ${siteUrl}/log`,
+            `Missed a day. The old pattern says skip today too.\n\nBreak the pattern. One log. That's the whole fight: ${siteUrl}/log`,
+          ]
 
   const randomMessage = messages[Math.floor(Math.random() * messages.length)]
   return sendSlackMessage(randomMessage)

@@ -32,11 +32,27 @@ export async function POST(request: NextRequest) {
 
     // If no logs yesterday, send a nudge
     if (!logs || logs.length === 0) {
+      // Calculate how long the streak was before this miss
+      let streakBefore = 0
+      const checkDate = new Date(yesterday)
+      for (let i = 0; i < 90; i++) {
+        checkDate.setDate(checkDate.getDate() - 1)
+        const dateStr = formatDate(checkDate)
+        const { data: dayLogs } = await supabase
+          .from('food_logs')
+          .select('id')
+          .eq('date', dateStr)
+          .limit(1)
+        if (!dayLogs || dayLogs.length === 0) break
+        streakBefore++
+      }
+
       const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
-      const sent = await sendMissedDayNudge(siteUrl)
+      const sent = await sendMissedDayNudge(siteUrl, streakBefore)
 
       return NextResponse.json({
         nudge_sent: sent,
+        streak_before_miss: streakBefore,
         message: sent ? 'Nudge sent successfully' : 'Failed to send nudge',
       })
     }
