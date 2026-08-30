@@ -21,6 +21,7 @@ import {
   sendTelegramMessage,
   showTyping,
   telegramLogId,
+  type TelegramMessage,
   type TelegramUpdate,
 } from '@/lib/telegram'
 
@@ -66,6 +67,7 @@ These are coaching ranges, not medical prescriptions. We’ll learn from your re
 
 /today — today’s rough totals
 /goals — your current north star
+/retry — reprocess your last saved message
 /help — show this note`, replyOptions)
 }
 
@@ -93,6 +95,89 @@ async function sendAndRemember({
   })
 }
 
+async function processCoachInput({
+  message,
+  rawInput,
+  transcript,
+  sourceMessageId = message.message_id,
+  saveUserFirst = true,
+}: {
+  message: TelegramMessage
+  rawInput: string
+  transcript?: string
+  sourceMessageId?: number
+  saveUserFirst?: boolean
+}) {
+  const messageDate = new Date(message.date * 1000)
+  const date = formatIndiaDate(messageDate)
+  const indiaHour = getIndiaHour(messageDate)
+  const [logsBefore, conversationBefore] = await Promise.all([
+    getFoodLogsForDate(date),
+    getCoachMessagesForDate({
+      chatId: message.chat.id,
+      date,
+      excludeSourceMessageId: sourceMessageId,
+    }),
+  ])
+  if (saveUserFirst) {
+    await saveCoachMessage({
+      chatId: message.chat.id,
+      date,
+      sourceMessageId,
+      role: 'user',
+      kind: 'other',
+      content: rawInput,
+    })
+  }
+  const memory = `${dailyCoachContext(logsBefore)}\n\nConversation earlier today:\n${coachConversationContext(conversationBefore)}`
+  const interpretation = await interpretCoachInput(rawInput, memory, indiaHour)
+  await saveCoachMessage({
+    chatId: message.chat.id,
+    date,
+    sourceMessageId,
+    role: 'user',
+    kind: interpretation.intent,
+    content: rawInput,
+  })
+
+  if (interpretation.intent !== 'food_log' || !interpretation.analysis) {
+    if (!interpretation.reply) throw new Error('Coach reply was not available')
+    await sendAndRemember({
+      chatId: message.chat.id,
+      date,
+      sourceMessageId,
+      kind: interpretation.intent,
+      text: formatCoachReply(interpretation.reply, summarizeFoodLogs(logsBefore), indiaHour),
+    })
+    return
+  }
+
+  const log = await createFoodLog({
+    rawInput,
+    date,
+    id: telegramLogId(message.chat.id, sourceMessageId),
+    transcript,
+    analysis: interpretation.analysis,
+  })
+
+  if (!log.coaching) throw new Error('Coach response was not available')
+  const logsAfter = await getFoodLogsForDate(date)
+  const coachMessage = formatLiveCoachMessage(log.coaching, {
+    calories: log.total_calories,
+    protein: log.total_protein,
+    carbs: log.total_carbs,
+    fat: log.total_fat,
+    fiber: (log.parsed_meals || []).reduce((sum, meal) => sum + (meal.fiber || 0), 0),
+  }, summarizeFoodLogs(logsAfter), indiaHour, transcript)
+  await sendAndRemember({
+    chatId: message.chat.id,
+    date,
+    sourceMessageId,
+    kind: 'food_log',
+    text: coachMessage,
+  })
+}
+
 export async function POST(request: NextRequest) {
   const expectedSecret = process.env.TELEGRAM_WEBHOOK_SECRET
   if (!expectedSecret && process.env.NODE_ENV === 'production') {
@@ -109,6 +194,27 @@ export async function POST(request: NextRequest) {
 
   try {
     const command = message.text?.trim().split(/\s+/)[0].toLowerCase().split('@')[0]
+    if (command === '/retry') {
+      await showTyping(message.chat.id)
+      const date = formatIndiaDate(new Date(message.date * 1000))
+      const history = await getCoachMessagesForDate({ chatId: message.chat.id, date, limit: 60 })
+      const lastUser = history.slice().reverse().find((item) => item.role === 'user')
+      if (!lastUser?.content || lastUser.source_message_id === undefined) {
+        await sendTelegramMessage(
+          message.chat.id,
+          'I don’t have a saved message to retry yet. Send me the food or question normally. 🌿',
+          { replyToMessageId: message.message_id },
+        )
+        return NextResponse.json({ ok: true })
+      }
+      await processCoachInput({
+        message,
+        rawInput: lastUser.content,
+        sourceMessageId: lastUser.source_message_id,
+        saveUserFirst: false,
+      })
+      return NextResponse.json({ ok: true })
+    }
     if (command?.startsWith('/')) {
       await commandReply(message.chat.id, command, message.message_id)
       return NextResponse.json({ ok: true })
@@ -153,76 +259,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true })
     }
 
-    const messageDate = new Date(message.date * 1000)
-    const date = formatIndiaDate(messageDate)
-    const indiaHour = getIndiaHour(messageDate)
-    const [logsBefore, conversationBefore] = await Promise.all([
-      getFoodLogsForDate(date),
-      getCoachMessagesForDate({
-        chatId: message.chat.id,
-        date,
-        excludeSourceMessageId: message.message_id,
-      }),
-    ])
-    await saveCoachMessage({
-      chatId: message.chat.id,
-      date,
-      sourceMessageId: message.message_id,
-      role: 'user',
-      kind: 'other',
-      content: rawInput,
-    })
-    const memory = `${dailyCoachContext(logsBefore)}\n\nConversation earlier today:\n${coachConversationContext(conversationBefore)}`
-    const interpretation = await interpretCoachInput(rawInput, memory, indiaHour)
-    await saveCoachMessage({
-      chatId: message.chat.id,
-      date,
-      sourceMessageId: message.message_id,
-      role: 'user',
-      kind: interpretation.intent,
-      content: rawInput,
-    })
-
-    if (interpretation.intent !== 'food_log' || !interpretation.analysis) {
-      if (!interpretation.reply) throw new Error('Coach reply was not available')
-      await sendAndRemember({
-        chatId: message.chat.id,
-        date,
-        sourceMessageId: message.message_id,
-        kind: interpretation.intent,
-        text: formatCoachReply(interpretation.reply, summarizeFoodLogs(logsBefore), indiaHour),
-      })
-      return NextResponse.json({ ok: true })
-    }
-
-    const log = await createFoodLog({
-      rawInput,
-      date,
-      id: telegramLogId(message.chat.id, message.message_id),
-      transcript,
-      analysis: interpretation.analysis,
-    })
-
-    if (!log.coaching) throw new Error('Coach response was not available')
-    const logsAfter = await getFoodLogsForDate(date)
-    const coachMessage = formatLiveCoachMessage(log.coaching, {
-        calories: log.total_calories,
-        protein: log.total_protein,
-        carbs: log.total_carbs,
-        fat: log.total_fat,
-        fiber: (log.parsed_meals || []).reduce((sum, meal) => sum + (meal.fiber || 0), 0),
-      }, summarizeFoodLogs(logsAfter), indiaHour, transcript)
-    await sendAndRemember({
-      chatId: message.chat.id,
-      date,
-      sourceMessageId: message.message_id,
-      kind: 'food_log',
-      text: coachMessage,
-    })
+    await processCoachInput({ message, rawInput, transcript })
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('Telegram webhook error:', error)
-    const errorMessage = 'I caught your note, but tripped while making sense of it. Nothing is wrong with your answer—please send it once more. 🌿'
+    const errorMessage = 'Gemini is unusually busy, but your message is safely remembered. Send /retry and I’ll process it without making you type it again. 🌿'
     await sendAndRemember({
       chatId: message.chat.id,
       date: formatIndiaDate(new Date(message.date * 1000)),

@@ -3,6 +3,7 @@ import { PROFILE_CONTEXT } from './profile'
 
 const MODELS = [
   process.env.GEMINI_MODEL || 'gemini-3.7-flash',
+  'gemini-3.6-flash',
   'gemini-2.5-flash',
 ].filter((model, index, all) => all.indexOf(model) === index)
 
@@ -86,23 +87,33 @@ async function generate(parts: string | Part[], json = false): Promise<string> {
   if (!availableKeys.length) throw new Error('GEMINI_API_KEY is not configured')
 
   let lastError: unknown
+  const deadline = Date.now() + 50_000
   for (const key of availableKeys) {
     for (const modelName of MODELS) {
-      try {
-        const model = clientFor(key).getGenerativeModel({
-          model: modelName,
-          generationConfig: json ? { responseMimeType: 'application/json' } : undefined,
-        })
-        const result = await model.generateContent(parts, {
-          timeout: modelName === 'gemini-2.5-flash' ? 25_000 : 7_000,
-        })
-        return result.response.text()
-      } catch (error) {
-        lastError = error
-        const retryable = error as { status?: number; name?: string; message?: string }
-        const message = retryable.message?.toLowerCase() || ''
-        const timedOut = retryable.name === 'AbortError' || message.includes('timed out') || message.includes('aborted')
-        if (![429, 503, 404].includes(retryable.status || 0) && !timedOut) throw error
+      const attempts = modelName === MODELS[0] ? 2 : 1
+      for (let attempt = 0; attempt < attempts; attempt++) {
+        const remaining = deadline - Date.now()
+        if (remaining < 1_500) throw lastError || new Error('Gemini retry budget was exhausted')
+        try {
+          const model = clientFor(key).getGenerativeModel({
+            model: modelName,
+            generationConfig: json ? { responseMimeType: 'application/json' } : undefined,
+          })
+          const result = await model.generateContent(parts, {
+            timeout: Math.min(12_000, remaining),
+          })
+          return result.response.text()
+        } catch (error) {
+          lastError = error
+          const retryable = error as { status?: number; name?: string; message?: string }
+          const message = retryable.message?.toLowerCase() || ''
+          const timedOut = retryable.name === 'AbortError' || message.includes('timed out') || message.includes('aborted')
+          if (![429, 503, 404].includes(retryable.status || 0) && !timedOut) throw error
+          if (retryable.status === 404) break
+          if (attempt + 1 < attempts) {
+            await new Promise((resolve) => setTimeout(resolve, 350 * (attempt + 1)))
+          }
+        }
       }
     }
   }
