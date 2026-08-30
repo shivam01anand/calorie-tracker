@@ -6,6 +6,8 @@ import { sendWeeklyCoachReport } from '@/lib/slack'
 import { getWeekStart, formatDate } from '@/lib/utils'
 import { sealJson } from '@/lib/crypto'
 
+export const maxDuration = 120
+
 // This endpoint should be called weekly by Vercel Cron
 // cron: 0 20 * * 0 (every Sunday at 8 PM)
 
@@ -39,7 +41,7 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Generate analysis with Gemini
+    // Weekly reports prefer GPT-5.5 via OpenRouter and fall back to Gemini.
     const dailyLogs = aggregateFoodLogsByDate(logs)
     const analysisResult = await generateWeeklyAnalysis(dailyLogs)
 

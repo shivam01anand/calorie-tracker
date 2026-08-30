@@ -72,6 +72,23 @@ export interface WeeklyCoachReport {
   recommendations: string[]
 }
 
+interface OpenRouterChatResponse {
+  choices?: Array<{
+    message?: {
+      content?: string | Array<{ type?: string; text?: string }>
+    }
+  }>
+  usage?: {
+    prompt_tokens?: number
+    completion_tokens?: number
+    total_tokens?: number
+    cost?: number
+  }
+  error?: {
+    message?: string
+  }
+}
+
 function clientFor(key: string) {
   return new GoogleGenerativeAI(key)
 }
@@ -124,6 +141,65 @@ async function generate(parts: string | Part[], json = false): Promise<string> {
 function parseJson<T>(response: string): T {
   const cleaned = response.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
   return JSON.parse(cleaned) as T
+}
+
+async function generateWeeklyWithOpenRouter(prompt: string): Promise<string> {
+  const apiKey = process.env.OPENROUTER_API_KEY
+  if (!apiKey) throw new Error('OPENROUTER_API_KEY is not configured')
+
+  const model = process.env.OPENROUTER_WEEKLY_MODEL || 'openai/gpt-5.5'
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 45_000)
+
+  try {
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': process.env.NEXT_PUBLIC_SITE_URL || 'https://calorie-tracker-mocha-two.vercel.app',
+        'X-Title': 'Calypso Nutritionist',
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          {
+            role: 'system',
+            content: 'You are Calypso, a warm and rigorous nutrition coach. Return only valid JSON matching the requested schema.',
+          },
+          { role: 'user', content: prompt },
+        ],
+        reasoning: { effort: 'low', exclude: true },
+        response_format: { type: 'json_object' },
+        max_tokens: 2200,
+      }),
+      signal: controller.signal,
+    })
+
+    const result = await response.json() as OpenRouterChatResponse
+    if (!response.ok) {
+      throw new Error(`OpenRouter returned ${response.status}: ${result.error?.message || 'request failed'}`)
+    }
+
+    const content = result.choices?.[0]?.message?.content
+    const text = typeof content === 'string'
+      ? content
+      : content?.map((part) => part.text || '').join('')
+
+    if (!text?.trim()) throw new Error('OpenRouter returned an empty weekly report')
+
+    console.info('Weekly OpenRouter usage', {
+      model,
+      promptTokens: result.usage?.prompt_tokens,
+      completionTokens: result.usage?.completion_tokens,
+      totalTokens: result.usage?.total_tokens,
+      cost: result.usage?.cost,
+    })
+
+    return text
+  } finally {
+    clearTimeout(timeout)
+  }
 }
 
 function safeInt(value: unknown) {
@@ -416,6 +492,15 @@ Return only JSON:
   "missing_nutrients": ["only likely gaps supported by logs"],
   "recommendations": ["specific food-level suggestion", "optional second suggestion"]
 }`
+
+  if (process.env.OPENROUTER_API_KEY) {
+    try {
+      return parseJson<WeeklyCoachReport>(await generateWeeklyWithOpenRouter(prompt))
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown OpenRouter error'
+      console.error('Weekly GPT-5.5 generation failed; falling back to Gemini:', message)
+    }
+  }
 
   return parseJson<WeeklyCoachReport>(await generate(prompt, true))
 }
