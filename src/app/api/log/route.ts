@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import { createFoodLog, getFoodLogsForDate } from '@/lib/food-log'
+import { createFoodLog, getFoodLogsForDate, recalculateFoodLog } from '@/lib/food-log'
 import { formatIndiaDate } from '@/lib/profile'
 
 export const maxDuration = 60
@@ -25,6 +25,17 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('GET /api/log:', error)
     return NextResponse.json({ error: 'Failed to fetch logs' }, { status: 500 })
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  const id = new URL(request.url).searchParams.get('id')
+  if (!id) return NextResponse.json({ error: 'ID is required' }, { status: 400 })
+  try {
+    return NextResponse.json(await recalculateFoodLog(id))
+  } catch (error) {
+    console.error('PATCH /api/log:', error)
+    return NextResponse.json({ error: 'Failed to recalculate log' }, { status: 500 })
   }
 }
 

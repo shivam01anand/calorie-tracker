@@ -113,6 +113,53 @@ export function aggregateFoodLogsByDate(logs: StoredFoodLog[]) {
   })
 }
 
+function totalsFromMeals(meals: FoodLog['parsed_meals']) {
+  return meals.reduce((totals, meal) => ({
+    calories: totals.calories + (meal.calories || 0),
+    protein: totals.protein + (meal.protein || 0),
+    carbs: totals.carbs + (meal.carbs || 0),
+    fat: totals.fat + (meal.fat || 0),
+  }), { calories: 0, protein: 0, carbs: 0, fat: 0 })
+}
+
+export async function recalculateFoodLog(id: string) {
+  const { data: row, error: readError } = await supabase
+    .from('food_logs')
+    .select('*')
+    .eq('id', id)
+    .single()
+  if (readError) throw readError
+
+  const log = hydrateFoodLog(row as FoodLog)
+  const total = totalsFromMeals(log.parsed_meals || [])
+  const protectedPayload: ProtectedFoodPayload = {
+    raw_input: log.raw_input,
+    parsed_meals: log.parsed_meals || [],
+    total_calories: total.calories,
+    total_protein: total.protein,
+    total_carbs: total.carbs,
+    total_fat: total.fat,
+    insights: log.insights,
+  }
+  const encrypt = Boolean(process.env.DATA_ENCRYPTION_KEY)
+  const { data, error } = await supabase
+    .from('food_logs')
+    .update({
+      raw_input: encrypt ? 'Private food note' : log.raw_input,
+      parsed_meals: encrypt ? [] : log.parsed_meals,
+      total_calories: encrypt ? 0 : total.calories,
+      total_protein: encrypt ? 0 : total.protein,
+      total_carbs: encrypt ? 0 : total.carbs,
+      total_fat: encrypt ? 0 : total.fat,
+      insights: encrypt ? sealJson(protectedPayload) : log.insights,
+    })
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return hydrateFoodLog(data as FoodLog)
+}
+
 export async function createFoodLog({
   rawInput,
   date = formatIndiaDate(),

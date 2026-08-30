@@ -135,12 +135,21 @@ function normalizeDay(result: DayAnalysis): DayAnalysis {
       }))
     : []
 
-  const total = {
-    calories: safeInt(result.total?.calories ?? meals.reduce((sum, meal) => sum + meal.calories, 0)),
-    protein: safeInt(result.total?.protein ?? meals.reduce((sum, meal) => sum + meal.protein, 0)),
-    carbs: safeInt(result.total?.carbs ?? meals.reduce((sum, meal) => sum + meal.carbs, 0)),
-    fat: safeInt(result.total?.fat ?? meals.reduce((sum, meal) => sum + meal.fat, 0)),
-    fiber: safeInt(result.total?.fiber ?? meals.reduce((sum, meal) => sum + meal.fiber, 0)),
+  // For live Telegram updates, Gemini sees earlier daily context and can
+  // occasionally put cumulative-day macros in `total`. The normalized meals
+  // are the source of truth for this entry, so always sum them when present.
+  const total = meals.length ? {
+    calories: meals.reduce((sum, meal) => sum + meal.calories, 0),
+    protein: meals.reduce((sum, meal) => sum + meal.protein, 0),
+    carbs: meals.reduce((sum, meal) => sum + meal.carbs, 0),
+    fat: meals.reduce((sum, meal) => sum + meal.fat, 0),
+    fiber: meals.reduce((sum, meal) => sum + meal.fiber, 0),
+  } : {
+    calories: safeInt(result.total?.calories),
+    protein: safeInt(result.total?.protein),
+    carbs: safeInt(result.total?.carbs),
+    fat: safeInt(result.total?.fat),
+    fiber: safeInt(result.total?.fiber),
   }
 
   return { meals, total, coaching: result.coaching }
@@ -238,6 +247,8 @@ First classify the message:
 
 For food_log:
 - Estimate ONLY the newly reported food, never repeat foods from today's state in analysis.meals or analysis.total.
+- Resolve words like “that” or “it” from the supplied conversation when they clearly refer to a specific food Calypso just suggested.
+- Never return food_log with an empty meals array. If a referenced food cannot be identified, use question and ask what should be logged.
 - Use realistic Indian/South Asian portions. If quantity is missing, assume one ordinary serving and lower confidence.
 - Make coaching evaluate the cumulative day: today's state plus this new entry.
 - next_move is one specific action for the rest of TODAY. Never say tomorrow unless the local hour is 23 or later.
