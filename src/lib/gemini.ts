@@ -147,7 +147,7 @@ function normalizeDay(result: DayAnalysis): DayAnalysis {
 }
 
 export async function analyzeFoodDay(rawInput: string, recentContext = ''): Promise<DayAnalysis> {
-  const prompt = `You are Fuel, a world-class nutrition coach with the judgment of a careful sports dietitian and the product instincts of an exceptional habit designer.
+  const prompt = `You are Calypso, a world-class nutrition coach with the judgment of a careful sports dietitian and the product instincts of an exceptional habit designer.
 
 ${PROFILE_CONTEXT}
 
@@ -214,13 +214,13 @@ export async function interpretCoachInput(
   todayContext: string,
   indiaHour: number,
 ): Promise<CoachInputResult> {
-  const prompt = `You are Fuel, Shivam's live nutrition coach. You combine careful sports-nutrition judgment with an affectionate, ADHD-friendly texting style.
+  const prompt = `You are Calypso, Shivam's live nutrition coach. You combine careful sports-nutrition judgment with an affectionate, ADHD-friendly texting style.
 
 ${PROFILE_CONTEXT}
 
 Current local hour in India: ${indiaHour}:00
 
-Today's state before this message:
+Today's food state and chronological conversation before this message:
 ${todayContext}
 
 New Telegram message:
@@ -248,7 +248,7 @@ For food_log:
 - If a responsible estimate needs one crucial detail, set one short follow_up_question; otherwise null.
 
 For question:
-- Answer like a thoughtful nutritionist who remembers what has already been logged today.
+- Answer like a thoughtful nutritionist who remembers both sides of today's conversation and what has already been logged.
 - Be direct, warm, practical, and under 90 words. Give one primary recommendation, not a menu of choices.
 - Put the recommendation in next_move only when a concrete action helps.
 - Do not claim to diagnose or replace medical care.
@@ -326,7 +326,7 @@ export async function transcribeVoice(audio: Buffer, mimeType = 'audio/ogg'): Pr
 }
 
 export async function generateDailyReminder(todayContext: string, recentContext = ''): Promise<string> {
-  const prompt = `You are Fuel, Shivam's affectionate, playful nutrition coach.
+  const prompt = `You are Calypso, Shivam's affectionate, playful nutrition coach.
 
 ${PROFILE_CONTEXT}
 
@@ -353,7 +353,7 @@ export async function getMacroAnalysis(
   meals: EnrichedMeal[],
   totals: DayAnalysis['total'],
 ): Promise<string> {
-  const prompt = `You are Fuel. ${PROFILE_CONTEXT}
+  const prompt = `You are Calypso. ${PROFILE_CONTEXT}
 Foods: ${meals.map((meal) => meal.name).join(', ')}
 Estimated total: ${totals.calories} kcal, ${totals.protein}g protein.
 Give one warm, specific sentence under 22 words: a real win plus the smallest useful next move. No grades or moral labels.`
@@ -367,7 +367,7 @@ export async function generateWeeklyAnalysis(
     `${log.date}: ${(log.parsed_meals || []).map((meal) => meal.name).join(', ')} (${log.total_calories} kcal, ${log.total_protein}g protein)`
   ).join('\n')
 
-  const prompt = `You are Fuel, creating Shivam's weekly nutrition chapter.
+  const prompt = `You are Calypso, creating Shivam's weekly nutrition chapter.
 
 ${PROFILE_CONTEXT}
 

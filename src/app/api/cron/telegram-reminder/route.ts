@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { saveCoachMessage } from '@/lib/conversation'
 import { generateDailyReminder } from '@/lib/gemini'
 import { formatIndiaDate } from '@/lib/profile'
 import { dailyCoachContext, getFoodLogsByDates, summarizeFoodLogs } from '@/lib/food-log'
@@ -32,7 +33,16 @@ async function run(request: NextRequest) {
     `${log.date}: ${log.raw_input} (~${log.total_protein}g protein)`
   ).join('\n')
   const hook = await generateDailyReminder(dailyCoachContext(todayLogs), recentContext)
-  await sendTelegramMessage(chatId, formatNightCheckIn(hook, summarizeFoodLogs(todayLogs)))
+  const reminder = formatNightCheckIn(hook, summarizeFoodLogs(todayLogs))
+  const sent = await sendTelegramMessage(chatId, reminder)
+  await saveCoachMessage({
+    chatId,
+    date: today,
+    sourceMessageId: sent.message_id,
+    role: 'assistant',
+    kind: 'reminder',
+    content: reminder,
+  })
   return NextResponse.json({ sent: true, existingEntries: todayLogs.length })
 }
 

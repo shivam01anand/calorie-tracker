@@ -61,10 +61,25 @@ CREATE TABLE IF NOT EXISTS weekly_analysis (
   recommendations TEXT[] DEFAULT '{}'
 );
 
+-- Encrypted Telegram conversation memory. Message content is sealed by the app
+-- before it reaches Supabase; only routing metadata remains readable.
+CREATE TABLE IF NOT EXISTS coach_messages (
+  id UUID PRIMARY KEY,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  date DATE NOT NULL,
+  chat_key TEXT NOT NULL,
+  source_message_id BIGINT,
+  role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+  kind TEXT NOT NULL CHECK (kind IN ('food_log', 'question', 'day_complete', 'other', 'reminder')),
+  payload TEXT NOT NULL
+);
+
 -- Create indexes for performance
 CREATE INDEX IF NOT EXISTS idx_food_logs_date ON food_logs(date);
 CREATE INDEX IF NOT EXISTS idx_meal_library_category ON meal_library(category);
 CREATE INDEX IF NOT EXISTS idx_weekly_plans_week_start ON weekly_plans(week_start);
+CREATE INDEX IF NOT EXISTS idx_coach_messages_chat_date_created
+  ON coach_messages(chat_key, date, created_at DESC);
 
 -- Insert your profile
 INSERT INTO user_profile (name, age, weight_kg, height_cm, goal, daily_calorie_target, daily_protein_target)
@@ -123,6 +138,7 @@ ALTER TABLE meal_library ENABLE ROW LEVEL SECURITY;
 ALTER TABLE weekly_plans ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_profile ENABLE ROW LEVEL SECURITY;
 ALTER TABLE weekly_analysis ENABLE ROW LEVEL SECURITY;
+ALTER TABLE coach_messages ENABLE ROW LEVEL SECURITY;
 
 -- Create policies to allow all operations (since this is a personal app)
 CREATE POLICY "Allow all operations on food_logs" ON food_logs FOR ALL USING (true) WITH CHECK (true);
@@ -130,3 +146,7 @@ CREATE POLICY "Allow all operations on meal_library" ON meal_library FOR ALL USI
 CREATE POLICY "Allow all operations on weekly_plans" ON weekly_plans FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all operations on user_profile" ON user_profile FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all operations on weekly_analysis" ON weekly_analysis FOR ALL USING (true) WITH CHECK (true);
+GRANT SELECT, INSERT, UPDATE ON coach_messages TO anon, authenticated;
+CREATE POLICY "Read encrypted coach memory" ON coach_messages FOR SELECT USING (true);
+CREATE POLICY "Insert encrypted coach memory" ON coach_messages FOR INSERT WITH CHECK (true);
+CREATE POLICY "Update encrypted coach memory" ON coach_messages FOR UPDATE USING (true) WITH CHECK (true);

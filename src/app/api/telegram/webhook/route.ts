@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import {
+  coachConversationContext,
+  getCoachMessagesForDate,
+  saveCoachMessage,
+  type CoachMessageKind,
+} from '@/lib/conversation'
+import {
   createFoodLog,
   dailyCoachContext,
   getFoodLogsForDate,
@@ -29,7 +35,7 @@ function isAllowed(chatId: number) {
 async function commandReply(chatId: number, command: string, messageId: number) {
   const replyOptions = { replyToMessageId: messageId }
   if (command === '/start') {
-    return sendTelegramMessage(chatId, `🌿 <b>Fuel is awake.</b>
+    return sendTelegramMessage(chatId, `🌿 <b>Calypso is awake.</b>
 
 Text me whenever you eat—not just at night. Every update gets a macro estimate, your running day, and one useful next move.
 
@@ -63,6 +69,30 @@ These are coaching ranges, not medical prescriptions. We’ll learn from your re
 /help — show this note`, replyOptions)
 }
 
+async function sendAndRemember({
+  chatId,
+  date,
+  sourceMessageId,
+  kind,
+  text,
+}: {
+  chatId: number
+  date: string
+  sourceMessageId: number
+  kind: CoachMessageKind
+  text: string
+}) {
+  await sendTelegramMessage(chatId, text, { replyToMessageId: sourceMessageId })
+  await saveCoachMessage({
+    chatId,
+    date,
+    sourceMessageId,
+    role: 'assistant',
+    kind,
+    content: text,
+  })
+}
+
 export async function POST(request: NextRequest) {
   const expectedSecret = process.env.TELEGRAM_WEBHOOK_SECRET
   if (!expectedSecret && process.env.NODE_ENV === 'production') {
@@ -85,11 +115,22 @@ export async function POST(request: NextRequest) {
     }
 
     if (message.text?.trim().toLowerCase() === 'skip') {
-      await sendTelegramMessage(
-        message.chat.id,
-        'Rest accepted. No debt created. I’ll meet you gently tomorrow. 🌙',
-        { replyToMessageId: message.message_id },
-      )
+      const date = formatIndiaDate(new Date(message.date * 1000))
+      await saveCoachMessage({
+        chatId: message.chat.id,
+        date,
+        sourceMessageId: message.message_id,
+        role: 'user',
+        kind: 'day_complete',
+        content: 'skip',
+      })
+      await sendAndRemember({
+        chatId: message.chat.id,
+        date,
+        sourceMessageId: message.message_id,
+        kind: 'day_complete',
+        text: 'Rest accepted. No debt created. I’ll meet you gently tomorrow. 🌙',
+      })
       return NextResponse.json({ ok: true })
     }
 
@@ -115,16 +156,42 @@ export async function POST(request: NextRequest) {
     const messageDate = new Date(message.date * 1000)
     const date = formatIndiaDate(messageDate)
     const indiaHour = getIndiaHour(messageDate)
-    const logsBefore = await getFoodLogsForDate(date)
-    const interpretation = await interpretCoachInput(rawInput, dailyCoachContext(logsBefore), indiaHour)
+    const [logsBefore, conversationBefore] = await Promise.all([
+      getFoodLogsForDate(date),
+      getCoachMessagesForDate({
+        chatId: message.chat.id,
+        date,
+        excludeSourceMessageId: message.message_id,
+      }),
+    ])
+    await saveCoachMessage({
+      chatId: message.chat.id,
+      date,
+      sourceMessageId: message.message_id,
+      role: 'user',
+      kind: 'other',
+      content: rawInput,
+    })
+    const memory = `${dailyCoachContext(logsBefore)}\n\nConversation earlier today:\n${coachConversationContext(conversationBefore)}`
+    const interpretation = await interpretCoachInput(rawInput, memory, indiaHour)
+    await saveCoachMessage({
+      chatId: message.chat.id,
+      date,
+      sourceMessageId: message.message_id,
+      role: 'user',
+      kind: interpretation.intent,
+      content: rawInput,
+    })
 
     if (interpretation.intent !== 'food_log' || !interpretation.analysis) {
       if (!interpretation.reply) throw new Error('Coach reply was not available')
-      await sendTelegramMessage(
-        message.chat.id,
-        formatCoachReply(interpretation.reply, summarizeFoodLogs(logsBefore), indiaHour),
-        { replyToMessageId: message.message_id },
-      )
+      await sendAndRemember({
+        chatId: message.chat.id,
+        date,
+        sourceMessageId: message.message_id,
+        kind: interpretation.intent,
+        text: formatCoachReply(interpretation.reply, summarizeFoodLogs(logsBefore), indiaHour),
+      })
       return NextResponse.json({ ok: true })
     }
 
@@ -138,25 +205,31 @@ export async function POST(request: NextRequest) {
 
     if (!log.coaching) throw new Error('Coach response was not available')
     const logsAfter = await getFoodLogsForDate(date)
-    await sendTelegramMessage(
-      message.chat.id,
-      formatLiveCoachMessage(log.coaching, {
+    const coachMessage = formatLiveCoachMessage(log.coaching, {
         calories: log.total_calories,
         protein: log.total_protein,
         carbs: log.total_carbs,
         fat: log.total_fat,
         fiber: (log.parsed_meals || []).reduce((sum, meal) => sum + (meal.fiber || 0), 0),
-      }, summarizeFoodLogs(logsAfter), indiaHour, transcript),
-      { replyToMessageId: message.message_id },
-    )
+      }, summarizeFoodLogs(logsAfter), indiaHour, transcript)
+    await sendAndRemember({
+      chatId: message.chat.id,
+      date,
+      sourceMessageId: message.message_id,
+      kind: 'food_log',
+      text: coachMessage,
+    })
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('Telegram webhook error:', error)
-    await sendTelegramMessage(
-      message.chat.id,
-      'I caught your note, but tripped while making sense of it. Nothing is wrong with your answer—please send it once more. 🌿',
-      { replyToMessageId: message.message_id },
-    ).catch(() => undefined)
+    const errorMessage = 'I caught your note, but tripped while making sense of it. Nothing is wrong with your answer—please send it once more. 🌿'
+    await sendAndRemember({
+      chatId: message.chat.id,
+      date: formatIndiaDate(new Date(message.date * 1000)),
+      sourceMessageId: message.message_id,
+      kind: 'other',
+      text: errorMessage,
+    }).catch(() => undefined)
     return NextResponse.json({ ok: true })
   }
 }

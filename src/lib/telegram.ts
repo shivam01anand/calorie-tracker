@@ -48,7 +48,7 @@ export async function sendTelegramMessage(
   text: string,
   options: { replyToMessageId?: number } = {},
 ) {
-  return telegramCall('sendMessage', {
+  return telegramCall<TelegramMessage>('sendMessage', {
     chat_id: chatId,
     text,
     parse_mode: 'HTML',
