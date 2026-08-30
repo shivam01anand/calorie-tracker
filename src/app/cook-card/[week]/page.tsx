@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, use } from 'react'
-import { Meal } from '@/lib/supabase'
+import type { Meal } from '@/lib/supabase'
 import { getWeekDays, getDayName, getDayNameHindi } from '@/lib/utils'
 
 interface DayPlan {

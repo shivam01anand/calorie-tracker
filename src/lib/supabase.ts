@@ -25,6 +25,10 @@ export interface ParsedMeal {
   protein: number
   carbs: number
   fat: number
+  fiber?: number
+  meal_period?: 'breakfast' | 'lunch' | 'dinner' | 'snack' | 'unknown'
+  portion_note?: string
+  confidence?: 'high' | 'medium' | 'low'
 }
 
 export interface Meal {

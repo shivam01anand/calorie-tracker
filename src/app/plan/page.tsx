@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/Button'
-import { Meal } from '@/lib/supabase'
+import type { Meal } from '@/lib/supabase'
 import { getWeekStart, getWeekDays, getDayName } from '@/lib/utils'
 
 interface DayPlan {

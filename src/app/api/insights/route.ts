@@ -1,7 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { generateWeeklyAnalysis } from '@/lib/gemini'
+import { getFoodLogsByDates } from '@/lib/food-log'
 import { getWeekStart, formatDate } from '@/lib/utils'
+import { isSealed, openJson, sealJson } from '@/lib/crypto'
+import type { WeeklyCoachReport } from '@/lib/gemini'
+
+function hydrateAnalysis<T extends { analysis: string; missing_nutrients?: string[]; recommendations?: string[] }>(row: T) {
+  if (!isSealed(row.analysis)) return row
+  const report = openJson<WeeklyCoachReport>(row.analysis)
+  return {
+    ...row,
+    analysis: JSON.stringify(report),
+    missing_nutrients: report.missing_nutrients,
+    recommendations: report.recommendations,
+  }
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -23,7 +37,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch analysis' }, { status: 500 })
     }
 
-    return NextResponse.json(data || null)
+    return NextResponse.json(data ? hydrateAnalysis(data) : null)
   } catch (error) {
     console.error('API error:', error)
     return NextResponse.json({ error: 'Something went wrong' }, { status: 500 })
@@ -44,18 +58,9 @@ export async function POST(request: NextRequest) {
       weekDates.push(formatDate(d))
     }
 
-    const { data: logs, error: logsError } = await supabase
-      .from('food_logs')
-      .select('*')
-      .in('date', weekDates)
-      .order('date', { ascending: true })
+    const logs = await getFoodLogsByDates(weekDates)
 
-    if (logsError) {
-      console.error('Supabase error:', logsError)
-      return NextResponse.json({ error: 'Failed to fetch logs' }, { status: 500 })
-    }
-
-    if (!logs || logs.length === 0) {
+    if (logs.length === 0) {
       return NextResponse.json({ error: 'No logs found for this week' }, { status: 400 })
     }
 
@@ -70,13 +75,14 @@ export async function POST(request: NextRequest) {
     )
 
     // Save analysis
+    const encrypt = Boolean(process.env.DATA_ENCRYPTION_KEY)
     const { data, error } = await supabase
       .from('weekly_analysis')
       .insert({
         week_start: weekStart,
-        analysis: analysisResult.analysis,
-        missing_nutrients: analysisResult.missing_nutrients,
-        recommendations: analysisResult.recommendations,
+        analysis: encrypt ? sealJson(analysisResult) : JSON.stringify(analysisResult),
+        missing_nutrients: encrypt ? [] : analysisResult.missing_nutrients,
+        recommendations: encrypt ? [] : analysisResult.recommendations,
       })
       .select()
       .single()
@@ -86,7 +92,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to save analysis' }, { status: 500 })
     }
 
-    return NextResponse.json(data)
+    return NextResponse.json(hydrateAnalysis(data))
   } catch (error) {
     console.error('API error:', error)
     return NextResponse.json({ error: 'Something went wrong' }, { status: 500 })

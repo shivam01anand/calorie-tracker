@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { getFoodLogsByDates } from '@/lib/food-log'
 import { generateWeeklyAnalysis } from '@/lib/gemini'
-import { sendWeeklyAnalysisPing } from '@/lib/slack'
+import { sendWeeklyCoachReport } from '@/lib/slack'
 import { getWeekStart, formatDate } from '@/lib/utils'
+import { sealJson } from '@/lib/crypto'
 
 // This endpoint should be called weekly by Vercel Cron
 // cron: 0 20 * * 0 (every Sunday at 8 PM)
@@ -28,18 +30,9 @@ export async function POST(request: NextRequest) {
       weekDates.push(formatDate(d))
     }
 
-    const { data: logs, error: logsError } = await supabase
-      .from('food_logs')
-      .select('*')
-      .in('date', weekDates)
-      .order('date', { ascending: true })
+    const logs = await getFoodLogsByDates(weekDates)
 
-    if (logsError) {
-      console.error('Supabase error:', logsError)
-      return NextResponse.json({ error: 'Failed to fetch logs' }, { status: 500 })
-    }
-
-    if (!logs || logs.length === 0) {
+    if (logs.length === 0) {
       return NextResponse.json({
         analysis_generated: false,
         message: 'No logs found for this week',
@@ -56,14 +49,15 @@ export async function POST(request: NextRequest) {
       }))
     )
 
-    // Save analysis
+    // Save the richer report in the existing analysis field to avoid a destructive schema migration.
+    const encrypt = Boolean(process.env.DATA_ENCRYPTION_KEY)
     const { data, error } = await supabase
       .from('weekly_analysis')
       .insert({
         week_start: weekStart,
-        analysis: analysisResult.analysis,
-        missing_nutrients: analysisResult.missing_nutrients,
-        recommendations: analysisResult.recommendations,
+        analysis: encrypt ? sealJson(analysisResult) : JSON.stringify(analysisResult),
+        missing_nutrients: encrypt ? [] : analysisResult.missing_nutrients,
+        recommendations: encrypt ? [] : analysisResult.recommendations,
       })
       .select()
       .single()
@@ -74,12 +68,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Send Slack notification
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
-    const slackSent = await sendWeeklyAnalysisPing(
-      analysisResult.recommendations.slice(0, 2),
-      analysisResult.missing_nutrients[0] || 'Nothing major',
-      siteUrl
-    )
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://calorie-tracker-mocha-two.vercel.app'
+    const slackSent = await sendWeeklyCoachReport(analysisResult, {
+      loggedDays: new Set(logs.map((log) => log.date)).size,
+      proteinDays: logs.filter((log) => log.total_protein >= 120).length,
+    }, siteUrl)
 
     return NextResponse.json({
       analysis_generated: true,

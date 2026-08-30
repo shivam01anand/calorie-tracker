@@ -1,263 +1,147 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { MacroCard } from '@/components/MacroCard'
-import { InsightCard } from '@/components/InsightCard'
-import { TargetProgress } from '@/components/TargetProgress'
-import { Button } from '@/components/ui/Button'
-import { FoodLog } from '@/lib/supabase'
-import { formatDate } from '@/lib/utils'
+import { FormEvent, useEffect, useState } from 'react'
+import type { DayCoaching } from '@/lib/gemini'
+import type { FoodLog } from '@/lib/supabase'
+
+function coachingFrom(log: FoodLog): DayCoaching | null {
+  if (!log.insights) return null
+  try {
+    return (JSON.parse(log.insights) as { coaching?: DayCoaching }).coaching || null
+  } catch {
+    return null
+  }
+}
 
 export default function LogPage() {
   const [input, setInput] = useState('')
+  const [logs, setLogs] = useState<FoodLog[]>([])
+  const [latest, setLatest] = useState<FoodLog | null>(null)
   const [loading, setLoading] = useState(false)
-  const [todaysLogs, setTodaysLogs] = useState<FoodLog[]>([])
-  const [allLogs, setAllLogs] = useState<FoodLog[]>([])
-  const [latestResult, setLatestResult] = useState<FoodLog | null>(null)
+  const [error, setError] = useState('')
 
-  const today = formatDate(new Date())
+  async function refresh() {
+    const response = await fetch('/api/log')
+    if (response.ok) setLogs(await response.json())
+  }
 
   useEffect(() => {
-    fetchTodaysLogs()
-    fetchAllLogs()
+    let active = true
+    fetch('/api/log')
+      .then((response) => response.ok ? response.json() : [])
+      .then((data) => { if (active) setLogs(data) })
+    return () => { active = false }
   }, [])
 
-  const fetchTodaysLogs = async () => {
-    try {
-      const response = await fetch('/api/log')
-      if (response.ok) {
-        const data = await response.json()
-        setTodaysLogs(data)
-      }
-    } catch (error) {
-      console.error('Failed to fetch logs:', error)
-    }
-  }
-
-  const fetchAllLogs = async () => {
-    try {
-      const response = await fetch('/api/log/all')
-      if (response.ok) {
-        const data = await response.json()
-        setAllLogs(data)
-      }
-    } catch (error) {
-      console.error('Failed to fetch all logs:', error)
-    }
-  }
-
-  // Group logs by date
-  const pastLogs = allLogs.filter(log => log.date !== today)
-  const logsByDate = pastLogs.reduce((acc, log) => {
-    if (!acc[log.date]) acc[log.date] = []
-    acc[log.date].push(log)
-    return acc
-  }, {} as Record<string, FoodLog[]>)
-  const sortedDates = Object.keys(logsByDate).sort((a, b) => new Date(b).getTime() - new Date(a).getTime())
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  async function submit(event: FormEvent) {
+    event.preventDefault()
     if (!input.trim() || loading) return
-
     setLoading(true)
-    setLatestResult(null)
-
-    try {
-      const response = await fetch('/api/log', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ raw_input: input }),
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        setLatestResult(data)
-        setInput('')
-        fetchTodaysLogs()
-      } else {
-        const error = await response.json()
-        alert(error.error || 'Failed to log food')
-      }
-    } catch (error) {
-      console.error('Submit error:', error)
-      alert('Something went wrong')
-    } finally {
+    setError('')
+    const response = await fetch('/api/log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ raw_input: input }),
+    })
+    const result = await response.json()
+    if (!response.ok) {
+      setError(result.error || 'The coach tripped. Try that once more.')
       setLoading(false)
+      return
+    }
+    setLatest(result)
+    setInput('')
+    await refresh()
+    setLoading(false)
+  }
+
+  async function remove(id: string) {
+    if (!window.confirm('Remove this note from today?')) return
+    const response = await fetch(`/api/log?id=${id}`, { method: 'DELETE' })
+    if (response.ok) {
+      if (latest?.id === id) setLatest(null)
+      await refresh()
     }
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Delete this entry?')) return
-
-    try {
-      const response = await fetch(`/api/log?id=${id}`, { method: 'DELETE' })
-      if (response.ok) {
-        fetchTodaysLogs()
-        if (latestResult?.id === id) {
-          setLatestResult(null)
-        }
-      } else {
-        alert('Failed to delete')
-      }
-    } catch (error) {
-      console.error('Delete error:', error)
-      alert('Something went wrong')
-    }
-  }
-
-  // Calculate today's totals
-  const todaysTotals = todaysLogs.reduce(
-    (acc, log) => ({
-      calories: acc.calories + log.total_calories,
-      protein: acc.protein + log.total_protein,
-      carbs: acc.carbs + log.total_carbs,
-      fat: acc.fat + log.total_fat,
-    }),
-    { calories: 0, protein: 0, carbs: 0, fat: 0 }
-  )
-
-  // Aggregate all meals for smart analysis
-  const allMeals = todaysLogs.flatMap(log => log.parsed_meals || [])
+  const latestCoach = latest ? coachingFrom(latest) : null
 
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Log Food</h1>
-        <p className="text-[var(--muted)] mt-1">Just type what you ate. No overthinking.</p>
-      </div>
+    <div className="log-shell">
+      <header className="page-intro">
+        <p className="kicker">The thirty-second ritual</p>
+        <h1>What fed you?</h1>
+        <p>Messy beats missing. Write the day as you remember it; portions are welcome, never required.</p>
+      </header>
 
-      {/* Today's Total */}
-      {todaysLogs.length > 0 && (
-        <div className="space-y-4">
-          <h2 className="text-sm font-medium text-[var(--muted)] uppercase tracking-wide">
-            Today&apos;s Total
-          </h2>
-          <MacroCard {...todaysTotals} size="lg" />
-          <TargetProgress {...todaysTotals} meals={allMeals} />
+      <form className="log-form" onSubmit={submit}>
+        <textarea
+          value={input}
+          onChange={(event) => setInput(event.target.value)}
+          placeholder="Breakfast was eggs and toast… lunch rajma rice… protein shake after gym…"
+          disabled={loading}
+          aria-label="What you ate today"
+        />
+        <div className="log-form-footer">
+          <span>Voice notes will live in Telegram.</span>
+          <button disabled={loading || !input.trim()}>{loading ? 'Listening closely…' : 'Let the coach notice'}</button>
         </div>
-      )}
-
-      {/* Input Form */}
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="e.g., 2 rotis with dal tadka, chicken curry, rice, and a glass of buttermilk"
-            className="w-full h-32 px-4 py-3 bg-[var(--surface)] border border-[var(--border)] rounded-xl text-[var(--foreground)] placeholder:text-[var(--muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] resize-none"
-            disabled={loading}
-          />
-        </div>
-        <Button type="submit" size="lg" loading={loading} className="w-full sm:w-auto">
-          {loading ? 'Analyzing...' : 'Log Food'}
-        </Button>
+        {error && <p className="form-error">{error}</p>}
       </form>
 
-      {/* Latest Result */}
-      {latestResult && (
-        <div className="space-y-4 animate-in fade-in duration-300">
-          <div className="flex items-center gap-2">
-            <span className="text-[var(--success)] text-lg">✓</span>
-            <span className="text-[var(--muted)]">Logged successfully</span>
+      {latestCoach && (
+        <section className="coach-letter">
+          <p className="kicker">Your coach wrote back</p>
+          <h2>{latestCoach.chapter_title}</h2>
+          <p className="coach-opening">{latestCoach.opening}</p>
+          <div className="coach-grid">
+            <div>
+              <span>What landed</span>
+              <ul>{latestCoach.wins.map((win) => <li key={win}>{win}</li>)}</ul>
+            </div>
+            <div>
+              <span>The loving truth</span>
+              <p>{latestCoach.gentle_truth}</p>
+            </div>
+            <div className="tiny-move">
+              <span>Tomorrow’s tiny move</span>
+              <p>{latestCoach.next_move}</p>
+            </div>
           </div>
-          <MacroCard
-            calories={latestResult.total_calories}
-            protein={latestResult.total_protein}
-            carbs={latestResult.total_carbs}
-            fat={latestResult.total_fat}
-          />
-          {latestResult.insights && <InsightCard insights={latestResult.insights} />}
-        </div>
+          {latestCoach.follow_up_question && <p className="coach-question">{latestCoach.follow_up_question}</p>}
+        </section>
       )}
 
-      {/* Today's Logs */}
-      {todaysLogs.length > 0 && (
-        <div>
-          <h2 className="text-sm font-medium text-[var(--muted)] mb-4 uppercase tracking-wide">
-            Today&apos;s Entries
-          </h2>
-          <div className="space-y-3">
-            {todaysLogs.map((log) => (
-              <div
-                key={log.id}
-                className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-4 group"
-              >
-                <div className="flex justify-between items-start gap-2 mb-3">
-                  <p className="text-[var(--foreground)]">{log.raw_input}</p>
-                  <button
-                    onClick={() => handleDelete(log.id)}
-                    className="opacity-0 group-hover:opacity-100 text-[var(--muted)] hover:text-[var(--error)] transition-opacity text-lg leading-none"
-                    title="Delete entry"
-                  >
-                    ×
-                  </button>
-                </div>
-                <div className="flex flex-wrap gap-4 text-sm">
-                  <span className="text-[var(--accent)] font-medium macro-value">
-                    {log.total_calories} kcal
-                  </span>
-                  <span className="text-[var(--muted)] macro-value">
-                    {log.total_protein}g protein
-                  </span>
-                  <span className="text-[var(--muted)] macro-value">
-                    {log.total_carbs}g carbs
-                  </span>
-                  <span className="text-[var(--muted)] macro-value">
-                    {log.total_fat}g fat
-                  </span>
-                </div>
-              </div>
-            ))}
+      <section className="today-notes">
+        <div className="section-heading">
+          <div>
+            <p className="kicker">Today’s notes</p>
+            <h2>{logs.length ? `${logs.length} honest ${logs.length === 1 ? 'entry' : 'entries'}` : 'An open page'}</h2>
           </div>
         </div>
-      )}
-
-      {/* Past Entries */}
-      {sortedDates.length > 0 && (
-        <div>
-          <h2 className="text-sm font-medium text-[var(--muted)] mb-4 uppercase tracking-wide">
-            Past Entries
-          </h2>
-          <div className="max-h-96 overflow-y-auto space-y-6 pr-2">
-            {sortedDates.map((date) => {
-              const logs = logsByDate[date]
-              const dayTotal = logs.reduce((sum, log) => sum + log.total_calories, 0)
-              const dateObj = new Date(date)
-              const displayDate = dateObj.toLocaleDateString('en-US', {
-                weekday: 'short',
-                month: 'short',
-                day: 'numeric'
-              })
-
+        {logs.length ? (
+          <div className="entry-list">
+            {logs.map((log) => {
+              const coach = coachingFrom(log)
               return (
-                <div key={date} className="space-y-2">
-                  <div className="flex justify-between items-center sticky top-0 bg-[var(--background)] py-1">
-                    <span className="text-sm font-medium text-[var(--foreground)]">{displayDate}</span>
-                    <span className="text-sm text-[var(--accent)]">{dayTotal} kcal</span>
+                <article className="food-entry" key={log.id}>
+                  <div>
+                    {coach && <span className="entry-chapter">{coach.chapter_title}</span>}
+                    <p>{log.raw_input}</p>
                   </div>
-                  <div className="space-y-2">
-                    {logs.map((log) => (
-                      <div
-                        key={log.id}
-                        className="bg-[var(--surface)] border border-[var(--border)] rounded-lg p-3 text-sm"
-                      >
-                        <p className="text-[var(--foreground)] mb-2">{log.raw_input}</p>
-                        <div className="flex flex-wrap gap-3 text-xs">
-                          <span className="text-[var(--accent)]">{log.total_calories} kcal</span>
-                          <span className="text-[var(--muted)]">{log.total_protein}g P</span>
-                          <span className="text-[var(--muted)]">{log.total_carbs}g C</span>
-                          <span className="text-[var(--muted)]">{log.total_fat}g F</span>
-                        </div>
-                      </div>
-                    ))}
+                  <div className="entry-macros">
+                    <span>{log.total_protein}g protein</span>
+                    <span>{log.total_calories} kcal</span>
+                    <button onClick={() => remove(log.id)} aria-label="Remove this entry">Remove</button>
                   </div>
-                </div>
+                </article>
               )
             })}
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="empty-note"><p>Nothing logged yet.</p><span>The first rough sentence does all the heavy lifting.</span></div>
+        )}
+      </section>
     </div>
   )
 }

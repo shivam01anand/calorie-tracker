@@ -1,68 +1,47 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import Link from "next/link";
-import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+import type { Metadata } from 'next'
+import Link from 'next/link'
+import './globals.css'
 
 export const metadata: Metadata = {
-  title: "Fuel | Calorie Tracker",
-  description: "Personal nutrition tracker for building the dream body",
-};
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'https://calorie-tracker-mocha-two.vercel.app'),
+  title: 'Fuel — food, noticed',
+  description: 'A gentle nutrition coach for building muscle and living leaner.',
+  openGraph: {
+    title: 'Fuel — food, noticed',
+    description: 'A gentle coach for muscle, rhythm, and real life.',
+    images: [{ url: '/og.png', width: 1792, height: 936, alt: 'Fuel — food, noticed' }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Fuel — food, noticed',
+    description: 'A gentle coach for muscle, rhythm, and real life.',
+    images: ['/og.png'],
+  },
+}
 
 const navItems = [
-  { href: "/", label: "Home" },
-  { href: "/log", label: "Log" },
-  { href: "/plan", label: "Plan" },
-  { href: "/library", label: "Library" },
-  { href: "/insights", label: "Insights" },
-];
+  { href: '/', label: 'Today' },
+  { href: '/log', label: 'Log' },
+  { href: '/insights', label: 'Week' },
+]
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen`}
-      >
-        <nav className="fixed top-0 left-0 right-0 z-50 bg-[var(--background)]/80 backdrop-blur-md border-b border-[var(--border)]">
-          <div className="max-w-5xl mx-auto px-4 sm:px-6">
-            <div className="flex items-center justify-between h-16">
-              <Link
-                href="/"
-                className="text-xl font-bold tracking-tight text-[var(--accent)]"
-              >
-                FUEL
-              </Link>
-              <div className="flex items-center gap-1 sm:gap-2">
-                {navItems.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className="px-3 py-2 text-sm font-medium text-[var(--muted)] hover:text-[var(--foreground)] rounded-lg hover:bg-[var(--surface)] transition-colors"
-                  >
-                    {item.label}
-                  </Link>
-                ))}
-              </div>
+      <body>
+        <nav className="site-nav">
+          <div className="nav-inner">
+            <Link href="/" className="wordmark" aria-label="Fuel home">
+              <span>FUEL</span>
+              <small>food, noticed</small>
+            </Link>
+            <div className="nav-links">
+              {navItems.map((item) => <Link key={item.href} href={item.href}>{item.label}</Link>)}
             </div>
           </div>
         </nav>
-        <main className="pt-20 pb-8 px-4 sm:px-6 max-w-5xl mx-auto">
-          {children}
-        </main>
+        <main>{children}</main>
       </body>
     </html>
-  );
+  )
 }

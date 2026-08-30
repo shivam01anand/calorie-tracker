@@ -2,11 +2,10 @@
 
 ## Who This Is For
 
-**Shivam, 29 years old.**
-- 69kg, 177cm
-- Generally fit, but without abs
-- Ran a marathon
-- Goal: muscle gain, dream body before turning 30
+**Shivam, 29.5 years old.**
+- About 67kg, 175cm
+- Strength trains most days when life allows
+- Goal: body recomposition — gradually reduce body-fat percentage while adding visible muscle
 - Indian, enjoys both Indian and continental food
 
 ---
@@ -33,10 +32,12 @@
 
 ## The Philosophy
 
-### "More positive, not less negative"
+### "Notice, don't grade"
 - Frame nutrition as **adding good things**, not restricting bad things
 - Not about cutting out fatty food, but about achieving what you want
-- Indulgent is fine, as long as you're hitting your goals
+- Indulgent is fine; one meal never becomes a moral verdict
+- No scores out of ten, streak shame, or compensatory restriction
+- Feedback is validating, loving, playful, specific, and ADHD-friendly
 
 ### The Nerd Factor
 Shivam wants to know **why** something is good - not generic advice like "eat vegetables." He wants:
@@ -91,10 +92,10 @@ Shivam wants to know **why** something is good - not generic advice like "eat ve
 - Harsh motivational line about turning 30
 
 ### Nudges
-- Slack message when you miss a day of logging
-- Tone: real talk, personal
-- "You ran a marathon and can't even track what you eat?"
-- "The body that carried you through 42km deserves better"
+- A fresh AI-written Telegram check-in at 11 PM IST
+- Accepts messy text and Telegram voice notes
+- Tone: warm, curious, varied, and easy for an ADHD brain to answer
+- Missing a day creates no debt; the next honest log is always enough
 
 ---
 
@@ -122,7 +123,8 @@ Works on phone and laptop. No app store, just a website.
 | Tailwind CSS | Rapid styling, consistent design system |
 | Supabase | Free tier, PostgreSQL, easy setup |
 | Gemini API | Parses natural language food logs, generates insights |
-| Slack Webhooks | Simple notifications, already in daily workflow |
+| Telegram Bot API | Daily prompts plus text and voice-note logging |
+| Slack Webhooks | Weekly chapter in the food channel |
 | Vercel | Free hosting, automatic deployments, cron jobs |
 
 ---
@@ -193,4 +195,4 @@ vercel --prod
 
 ---
 
-*Built with intent. For the dream body.*
+*Built with care. Food, noticed.*

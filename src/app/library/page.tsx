@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/Button'
-import { Meal } from '@/lib/supabase'
+import type { Meal } from '@/lib/supabase'
 
 const categories = [
   { value: 'all', label: 'All' },

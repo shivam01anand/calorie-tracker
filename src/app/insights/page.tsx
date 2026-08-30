@@ -1,194 +1,106 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Button } from '@/components/ui/Button'
-import { WeeklyAnalysis } from '@/lib/supabase'
+import { useEffect, useState } from 'react'
+import type { WeeklyCoachReport } from '@/lib/gemini'
+import type { WeeklyAnalysis } from '@/lib/supabase'
 import { getWeekStart } from '@/lib/utils'
+
+function parseReport(analysis: WeeklyAnalysis | null): WeeklyCoachReport | null {
+  if (!analysis?.analysis) return null
+  try {
+    return JSON.parse(analysis.analysis) as WeeklyCoachReport
+  } catch {
+    return {
+      title: 'The week in progress',
+      opening: analysis.analysis,
+      wins: [],
+      pattern: '',
+      experiment: analysis.recommendations?.[0] || '',
+      closing: 'The next honest log is always enough.',
+      missing_nutrients: analysis.missing_nutrients || [],
+      recommendations: analysis.recommendations || [],
+    }
+  }
+}
 
 export default function InsightsPage() {
   const [weekStart, setWeekStart] = useState(() => getWeekStart(new Date()))
   const [analysis, setAnalysis] = useState<WeeklyAnalysis | null>(null)
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
+  const report = parseReport(analysis)
 
   useEffect(() => {
-    fetchAnalysis()
+    let active = true
+    fetch(`/api/insights?week_start=${weekStart}`)
+      .then(async (response) => response.ok ? response.json() : null)
+      .then((data) => { if (active) setAnalysis(data) })
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
   }, [weekStart])
 
-  const fetchAnalysis = async () => {
-    setLoading(true)
-    try {
-      const response = await fetch(`/api/insights?week_start=${weekStart}`)
-      if (response.ok) {
-        const data = await response.json()
-        setAnalysis(data)
-      }
-    } catch (error) {
-      console.error('Failed to fetch analysis:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const generateAnalysis = async () => {
+  async function generate() {
     setGenerating(true)
-    try {
-      const response = await fetch('/api/insights', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ week_start: weekStart }),
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        setAnalysis(data)
-      } else {
-        const error = await response.json()
-        alert(error.error || 'Failed to generate analysis')
-      }
-    } catch (error) {
-      console.error('Generate error:', error)
-      alert('Something went wrong')
-    } finally {
-      setGenerating(false)
-    }
-  }
-
-  const navigateWeek = (direction: 'prev' | 'next') => {
-    const current = new Date(weekStart)
-    current.setDate(current.getDate() + (direction === 'next' ? 7 : -7))
-    setWeekStart(getWeekStart(current))
-  }
-
-  // Format analysis text with markdown-style bold
-  const formatAnalysis = (text: string) => {
-    const parts = text.split(/(\*\*[^*]+\*\*)/g)
-    return parts.map((part, index) => {
-      if (part.startsWith('**') && part.endsWith('**')) {
-        return (
-          <span key={index} className="font-semibold text-[var(--accent)]">
-            {part.slice(2, -2)}
-          </span>
-        )
-      }
-      return part
+    const response = await fetch('/api/insights', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ week_start: weekStart }),
     })
+    if (response.ok) setAnalysis(await response.json())
+    setGenerating(false)
+  }
+
+  function moveWeek(days: number) {
+    const date = new Date(`${weekStart}T12:00:00`)
+    date.setDate(date.getDate() + days)
+    setLoading(true)
+    setWeekStart(getWeekStart(date))
   }
 
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Weekly Insights</h1>
-        <p className="text-[var(--muted)] mt-1">AI-powered analysis of your nutrition</p>
-      </div>
-
-      {/* Week Navigation */}
-      <div className="flex items-center justify-between bg-[var(--surface)] border border-[var(--border)] rounded-xl p-4">
-        <button
-          onClick={() => navigateWeek('prev')}
-          className="p-2 hover:bg-[var(--background)] rounded-lg text-[var(--muted)] hover:text-[var(--foreground)]"
-        >
-          ← Previous
-        </button>
-        <div className="text-center">
-          <div className="text-sm text-[var(--muted)]">Week of</div>
-          <div className="font-semibold">
-            {new Date(weekStart).toLocaleDateString('en-US', {
-              month: 'long',
-              day: 'numeric',
-              year: 'numeric',
-            })}
-          </div>
+    <div className="week-shell">
+      <header className="week-header">
+        <div>
+          <p className="kicker">Your weekly chapter</p>
+          <h1>{report?.title || 'The story is gathering.'}</h1>
+          <p>{report?.opening || 'Not a report card. A compassionate look at what your real life made possible.'}</p>
         </div>
-        <button
-          onClick={() => navigateWeek('next')}
-          className="p-2 hover:bg-[var(--background)] rounded-lg text-[var(--muted)] hover:text-[var(--foreground)]"
-        >
-          Next →
-        </button>
-      </div>
+        <div className="week-controls">
+          <button onClick={() => moveWeek(-7)}>←</button>
+          <span>Week of {new Date(`${weekStart}T12:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
+          <button onClick={() => moveWeek(7)}>→</button>
+        </div>
+      </header>
 
-      {/* Generate Button */}
-      <div className="flex justify-center">
-        <Button onClick={generateAnalysis} loading={generating} size="lg">
-          {analysis ? 'Regenerate Analysis' : 'Generate Analysis'}
-        </Button>
-      </div>
-
-      {/* Analysis Content */}
       {loading ? (
-        <div className="text-center py-12 text-[var(--muted)]">Loading...</div>
-      ) : analysis ? (
-        <div className="space-y-6">
-          {/* Main Analysis */}
-          <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <span className="text-lg">🧠</span>
-              <h2 className="font-bold text-[var(--foreground)]">Analysis</h2>
-            </div>
-            <div className="text-[var(--foreground)] leading-relaxed whitespace-pre-wrap">
-              {formatAnalysis(analysis.analysis)}
-            </div>
-          </div>
-
-          {/* Missing Nutrients */}
-          {analysis.missing_nutrients && analysis.missing_nutrients.length > 0 && (
-            <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-6">
-              <div className="flex items-center gap-2 mb-4">
-                <span className="text-lg">⚠️</span>
-                <h2 className="font-bold text-[var(--foreground)]">Missing This Week</h2>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {analysis.missing_nutrients.map((nutrient, index) => (
-                  <span
-                    key={index}
-                    className="px-3 py-1 bg-[var(--warning)]/20 text-[var(--warning)] rounded-full text-sm"
-                  >
-                    {nutrient}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Recommendations */}
-          {analysis.recommendations && analysis.recommendations.length > 0 && (
-            <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-6">
-              <div className="flex items-center gap-2 mb-4">
-                <span className="text-lg">💡</span>
-                <h2 className="font-bold text-[var(--foreground)]">Add These Next Week</h2>
-              </div>
-              <ul className="space-y-3">
-                {analysis.recommendations.map((rec, index) => (
-                  <li key={index} className="flex items-start gap-3">
-                    <span className="w-2 h-2 rounded-full bg-[var(--accent)] mt-2 flex-shrink-0" />
-                    <span className="text-[var(--foreground)]">{formatAnalysis(rec)}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* Generated At */}
-          <p className="text-center text-xs text-[var(--muted)]">
-            Generated on{' '}
-            {new Date(analysis.created_at).toLocaleDateString('en-US', {
-              month: 'long',
-              day: 'numeric',
-              hour: 'numeric',
-              minute: '2-digit',
-            })}
-          </p>
+        <div className="week-empty">Gathering the week…</div>
+      ) : report ? (
+        <div className="week-story">
+          <section className="receipts">
+            <p className="kicker">The receipts</p>
+            <h2>What quietly worked</h2>
+            <ol>{report.wins.map((win, index) => <li key={win}><span>0{index + 1}</span>{win}</li>)}</ol>
+          </section>
+          <section className="pattern-note">
+            <p className="kicker">The pattern worth noticing</p>
+            <blockquote>{report.pattern}</blockquote>
+          </section>
+          <section className="experiment-note">
+            <p className="kicker">One seven-day experiment</p>
+            <h2>{report.experiment}</h2>
+            {report.recommendations.length > 0 && <p>{report.recommendations.join(' · ')}</p>}
+          </section>
+          <p className="week-closing">{report.closing}</p>
         </div>
       ) : (
-        <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-8 text-center">
-          <p className="text-[var(--muted)] mb-2">No analysis generated for this week yet.</p>
-          <p className="text-sm text-[var(--muted)]">
-            Log some food entries first, then click &quot;Generate Analysis&quot; to get insights.
-          </p>
+        <div className="week-empty">
+          <p>There is no chapter yet.</p>
+          <span>A few honest food notes are enough for the coach to see a pattern.</span>
+          <button onClick={generate} disabled={generating}>{generating ? 'Reading the week…' : 'Write this week’s chapter'}</button>
         </div>
       )}
+
+      {report && <button className="regenerate" onClick={generate} disabled={generating}>{generating ? 'Reading again…' : 'Refresh this chapter'}</button>}
     </div>
   )
 }

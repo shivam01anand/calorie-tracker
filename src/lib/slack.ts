@@ -1,12 +1,13 @@
-const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL!
+import type { WeeklyCoachReport } from './gemini'
+
+const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL
 
 export async function sendSlackMessage(message: string): Promise<boolean> {
+  if (!SLACK_WEBHOOK_URL) return false
   try {
     const response = await fetch(SLACK_WEBHOOK_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: message }),
     })
     return response.ok
@@ -16,37 +17,31 @@ export async function sendSlackMessage(message: string): Promise<boolean> {
   }
 }
 
-export async function sendMissedDayNudge(siteUrl: string, streakBefore: number): Promise<boolean> {
-  // Pride + identity-based nudges — reinforce who you're becoming, not what you missed
-  const messages =
-    streakBefore >= 7
-      ? [
-          `${streakBefore}-day streak was real. That's not luck — that's discipline.\n\nYesterday broke it. Today decides if it was a slip or a slide.\n\nLog now: ${siteUrl}/log`,
-          `${streakBefore} days straight. The version of you that did that is still here.\n\nOne log. Prove it wasn't a fluke: ${siteUrl}/log`,
-        ]
-      : streakBefore >= 3
-        ? [
-            `${streakBefore} days logged before yesterday. That's momentum.\n\nThe ADHD brain wants you to quit now. Don't give it the satisfaction.\n\nLog today: ${siteUrl}/log`,
-            `You had ${streakBefore} days going. Most people never start.\n\nThe gap between you and the body you want is just this one log: ${siteUrl}/log`,
-          ]
-        : [
-            `Yesterday's empty. Today isn't — yet.\n\nYou don't need a streak to start. You need one log to build one.\n\n30 seconds: ${siteUrl}/log`,
-            `No log yesterday. Doesn't matter.\n\nThe man who hits $1M and sculpts his body isn't the one who never missed — he's the one who came back every time.\n\nCome back: ${siteUrl}/log`,
-            `Missed a day. The old pattern says skip today too.\n\nBreak the pattern. One log. That's the whole fight: ${siteUrl}/log`,
-          ]
-
-  const randomMessage = messages[Math.floor(Math.random() * messages.length)]
-  return sendSlackMessage(randomMessage)
-}
-
-export async function sendWeeklyAnalysisPing(
-  highlights: string[],
-  missingNutrient: string,
+export async function sendWeeklyCoachReport(
+  report: WeeklyCoachReport,
+  stats: { loggedDays: number; proteinDays: number },
   siteUrl: string
 ): Promise<boolean> {
-  const highlightsText = highlights.slice(0, 2).map(h => `• ${h}`).join('\n')
+  const wins = report.wins.slice(0, 3).map((win) => `• ${win}`).join('\n')
+  const message = `🌿 *${report.title}*
+_${report.opening}_
 
-  const message = `📊 *Weekly nutrition analysis ready.*\n\nQuick hits:\n${highlightsText}\n\n⚠️ Missing: ${missingNutrient}\n\nFull breakdown: ${siteUrl}/insights`
+*The receipts*
+${wins}
 
+*The pattern worth noticing*
+${report.pattern}
+
+*Next week’s tiny experiment*
+${report.experiment}
+
+${stats.loggedDays} days noticed · protein floor reached ${stats.proteinDays} times
+
+${report.closing}
+<${siteUrl}/insights|Open the full week →>`
   return sendSlackMessage(message)
+}
+
+export async function sendMissedDayNudge(siteUrl: string): Promise<boolean> {
+  return sendSlackMessage(`No guilt, no reset button. Today is still open. Log one honest line: ${siteUrl}/log`)
 }
