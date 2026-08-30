@@ -48,3 +48,12 @@ export function formatIndiaDay(date = new Date()) {
     month: 'long',
   }).format(date)
 }
+
+export function getIndiaHour(date = new Date()) {
+  const hour = new Intl.DateTimeFormat('en-GB', {
+    timeZone: COACH_PROFILE.timeZone,
+    hour: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date).find((part) => part.type === 'hour')?.value
+  return Number(hour || 0)
+}

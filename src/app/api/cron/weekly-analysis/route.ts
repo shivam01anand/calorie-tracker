@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import { getFoodLogsByDates } from '@/lib/food-log'
+import { aggregateFoodLogsByDate, getFoodLogsByDates } from '@/lib/food-log'
 import { generateWeeklyAnalysis } from '@/lib/gemini'
 import { sendWeeklyCoachReport } from '@/lib/slack'
 import { getWeekStart, formatDate } from '@/lib/utils'
@@ -40,14 +40,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate analysis with Gemini
-    const analysisResult = await generateWeeklyAnalysis(
-      logs.map((l) => ({
-        date: l.date,
-        parsed_meals: l.parsed_meals,
-        total_calories: l.total_calories,
-        total_protein: l.total_protein,
-      }))
-    )
+    const dailyLogs = aggregateFoodLogsByDate(logs)
+    const analysisResult = await generateWeeklyAnalysis(dailyLogs)
 
     // Save the richer report in the existing analysis field to avoid a destructive schema migration.
     const encrypt = Boolean(process.env.DATA_ENCRYPTION_KEY)
@@ -70,8 +64,8 @@ export async function POST(request: NextRequest) {
     // Send Slack notification
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://calorie-tracker-mocha-two.vercel.app'
     const slackSent = await sendWeeklyCoachReport(analysisResult, {
-      loggedDays: new Set(logs.map((log) => log.date)).size,
-      proteinDays: logs.filter((log) => log.total_protein >= 120).length,
+      loggedDays: dailyLogs.length,
+      proteinDays: dailyLogs.filter((log) => log.total_protein >= 120).length,
     }, siteUrl)
 
     return NextResponse.json({

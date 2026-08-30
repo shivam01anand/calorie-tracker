@@ -8,6 +8,16 @@ export interface StoredFoodLog extends FoodLog {
   transcript?: string
 }
 
+export interface DailyFoodSummary {
+  entries: number
+  calories: number
+  protein: number
+  carbs: number
+  fat: number
+  fiber: number
+  foods: string[]
+}
+
 interface ProtectedFoodPayload {
   raw_input: string
   parsed_meals: FoodLog['parsed_meals']
@@ -54,16 +64,67 @@ export async function getAllFoodLogs() {
   return (data || []).map((row) => hydrateFoodLog(row as FoodLog))
 }
 
+export function summarizeFoodLogs(logs: StoredFoodLog[]): DailyFoodSummary {
+  return logs.reduce<DailyFoodSummary>((summary, log) => {
+    summary.entries += 1
+    summary.calories += log.total_calories
+    summary.protein += log.total_protein
+    summary.carbs += log.total_carbs
+    summary.fat += log.total_fat
+    summary.fiber += (log.parsed_meals || []).reduce((sum, meal) => sum + (meal.fiber || 0), 0)
+    summary.foods.push(...(log.parsed_meals || []).map((meal) => meal.name).filter(Boolean))
+    return summary
+  }, {
+    entries: 0,
+    calories: 0,
+    protein: 0,
+    carbs: 0,
+    fat: 0,
+    fiber: 0,
+    foods: [],
+  })
+}
+
+export function dailyCoachContext(logs: StoredFoodLog[]) {
+  const summary = summarizeFoodLogs(logs)
+  const entries = logs
+    .slice()
+    .reverse()
+    .map((log) => `- ${log.raw_input} (~${log.total_calories} kcal, ${log.total_protein}g protein)`)
+    .join('\n')
+
+  return `Already logged today: ${summary.entries} update${summary.entries === 1 ? '' : 's'}.
+Cumulative estimate before this message: ${summary.calories} kcal, ${summary.protein}g protein, ${summary.carbs}g carbs, ${summary.fat}g fat, ${summary.fiber}g fibre.
+${entries || '- Nothing logged yet.'}`
+}
+
+export function aggregateFoodLogsByDate(logs: StoredFoodLog[]) {
+  const byDate = new Map<string, StoredFoodLog[]>()
+  for (const log of logs) byDate.set(log.date, [...(byDate.get(log.date) || []), log])
+
+  return [...byDate.entries()].map(([date, dateLogs]) => {
+    const summary = summarizeFoodLogs(dateLogs)
+    return {
+      date,
+      parsed_meals: dateLogs.flatMap((log) => log.parsed_meals || []),
+      total_calories: summary.calories,
+      total_protein: summary.protein,
+    }
+  })
+}
+
 export async function createFoodLog({
   rawInput,
   date = formatIndiaDate(),
   id,
   transcript,
+  analysis: suppliedAnalysis,
 }: {
   rawInput: string
   date?: string
   id?: string
   transcript?: string
+  analysis?: DayAnalysis
 }): Promise<StoredFoodLog> {
   const cleanInput = rawInput.trim()
   if (!cleanInput) throw new Error('Please tell me what you ate')
@@ -73,7 +134,7 @@ export async function createFoodLog({
     if (existing) return hydrateFoodLog(existing as FoodLog)
   }
 
-  const analysis = await analyzeFoodDay(cleanInput)
+  const analysis = suppliedAnalysis || await analyzeFoodDay(cleanInput)
   const insights = JSON.stringify({
     version: 2,
     coaching: analysis.coaching,

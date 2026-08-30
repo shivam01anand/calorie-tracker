@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { generateDailyReminder } from '@/lib/gemini'
 import { formatIndiaDate } from '@/lib/profile'
-import { getFoodLogsByDates } from '@/lib/food-log'
-import { sendTelegramMessage } from '@/lib/telegram'
+import { dailyCoachContext, getFoodLogsByDates, summarizeFoodLogs } from '@/lib/food-log'
+import { formatNightCheckIn, sendTelegramMessage } from '@/lib/telegram'
 
 export const maxDuration = 60
 
@@ -24,13 +24,16 @@ async function run(request: NextRequest) {
 
   const dates = [dateOffset(-2), dateOffset(-1), dateOffset(0)]
   const logs = await getFoodLogsByDates(dates)
+  const today = dates[2]
+  const todayLogs = logs.filter((log) => log.date === today)
+  const earlierLogs = logs.filter((log) => log.date !== today)
 
-  const context = logs.map((log) =>
+  const recentContext = earlierLogs.map((log) =>
     `${log.date}: ${log.raw_input} (~${log.total_protein}g protein)`
   ).join('\n')
-  const reminder = await generateDailyReminder(context)
-  await sendTelegramMessage(chatId, reminder)
-  return NextResponse.json({ sent: true })
+  const hook = await generateDailyReminder(dailyCoachContext(todayLogs), recentContext)
+  await sendTelegramMessage(chatId, formatNightCheckIn(hook, summarizeFoodLogs(todayLogs)))
+  return NextResponse.json({ sent: true, existingEntries: todayLogs.length })
 }
 
 export async function GET(request: NextRequest) {

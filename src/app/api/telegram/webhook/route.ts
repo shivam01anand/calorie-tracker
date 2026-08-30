@@ -1,10 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createFoodLog, getFoodLogsForDate } from '@/lib/food-log'
-import { transcribeVoice } from '@/lib/gemini'
-import { formatIndiaDate } from '@/lib/profile'
+import {
+  createFoodLog,
+  dailyCoachContext,
+  getFoodLogsForDate,
+  summarizeFoodLogs,
+} from '@/lib/food-log'
+import { interpretCoachInput, transcribeVoice } from '@/lib/gemini'
+import { formatIndiaDate, getIndiaHour } from '@/lib/profile'
 import {
   downloadTelegramVoice,
-  formatDailyCoachMessage,
+  formatCoachReply,
+  formatLiveCoachMessage,
+  formatTodayCoachMessage,
   sendTelegramMessage,
   showTyping,
   telegramLogId,
@@ -19,13 +26,16 @@ function isAllowed(chatId: number) {
   return !allowed || String(chatId) === allowed
 }
 
-async function commandReply(chatId: number, command: string) {
+async function commandReply(chatId: number, command: string, messageId: number) {
+  const replyOptions = { replyToMessageId: messageId }
   if (command === '/start') {
     return sendTelegramMessage(chatId, `🌿 <b>Fuel is awake.</b>
 
-At 11 PM I’ll ask what fed you. Reply in messy text or send a voice note—I’ll turn it into a useful record and one loving next move.
+Text me whenever you eat—not just at night. Every update gets a macro estimate, your running day, and one useful next move.
 
-No grades. No guilt. No “starting Monday.”`)
+At 11 PM I’ll first check what’s already here, then ask if anything is missing. Messy text and voice notes both work.
+
+No grades. No guilt. No “starting Monday.”`, replyOptions)
   }
   if (command === '/goals') {
     return sendTelegramMessage(chatId, `<b>Your north star</b>
@@ -36,23 +46,21 @@ Working guide:
 • Stretch zone: 120–145g
 • Energy guide: roughly 2,200–2,450 kcal
 
-These are coaching ranges, not medical prescriptions. We’ll learn from your real weeks.`)
+These are coaching ranges, not medical prescriptions. We’ll learn from your real weeks.`, replyOptions)
   }
   if (command === '/today') {
     const data = await getFoodLogsForDate()
-    const totals = data.reduce((sum, log) => ({
-      protein: sum.protein + log.total_protein,
-      calories: sum.calories + log.total_calories,
-    }), { protein: 0, calories: 0 })
-    return sendTelegramMessage(chatId, data.length
-      ? `<b>Today so far</b>\n${data.length} note${data.length === 1 ? '' : 's'} · about ${totals.protein}g protein · ${totals.calories} kcal\n\nStill an estimate. Still useful.`
-      : `Today is still an open page. Send one rough line or a voice note whenever you’re ready.`)
+    return sendTelegramMessage(
+      chatId,
+      formatTodayCoachMessage(summarizeFoodLogs(data), getIndiaHour()),
+      replyOptions,
+    )
   }
   return sendTelegramMessage(chatId, `Send what you ate as text or a voice note.
 
 /today — today’s rough totals
 /goals — your current north star
-/help — show this note`)
+/help — show this note`, replyOptions)
 }
 
 export async function POST(request: NextRequest) {
@@ -70,14 +78,18 @@ export async function POST(request: NextRequest) {
   if (!isAllowed(message.chat.id)) return NextResponse.json({ ok: true })
 
   try {
-    const command = message.text?.trim().split(/\s+/)[0].toLowerCase()
+    const command = message.text?.trim().split(/\s+/)[0].toLowerCase().split('@')[0]
     if (command?.startsWith('/')) {
-      await commandReply(message.chat.id, command)
+      await commandReply(message.chat.id, command, message.message_id)
       return NextResponse.json({ ok: true })
     }
 
     if (message.text?.trim().toLowerCase() === 'skip') {
-      await sendTelegramMessage(message.chat.id, 'Rest accepted. No debt created. I’ll meet you gently tomorrow. 🌙')
+      await sendTelegramMessage(
+        message.chat.id,
+        'Rest accepted. No debt created. I’ll meet you gently tomorrow. 🌙',
+        { replyToMessageId: message.message_id },
+      )
       return NextResponse.json({ ok: true })
     }
 
@@ -92,31 +104,58 @@ export async function POST(request: NextRequest) {
     }
 
     if (!rawInput) {
-      await sendTelegramMessage(message.chat.id, 'Text or a voice note works beautifully. What did you eat today?')
+      await sendTelegramMessage(
+        message.chat.id,
+        'Text or a voice note works beautifully. What did you eat today?',
+        { replyToMessageId: message.message_id },
+      )
+      return NextResponse.json({ ok: true })
+    }
+
+    const messageDate = new Date(message.date * 1000)
+    const date = formatIndiaDate(messageDate)
+    const indiaHour = getIndiaHour(messageDate)
+    const logsBefore = await getFoodLogsForDate(date)
+    const interpretation = await interpretCoachInput(rawInput, dailyCoachContext(logsBefore), indiaHour)
+
+    if (interpretation.intent !== 'food_log' || !interpretation.analysis) {
+      if (!interpretation.reply) throw new Error('Coach reply was not available')
+      await sendTelegramMessage(
+        message.chat.id,
+        formatCoachReply(interpretation.reply, summarizeFoodLogs(logsBefore), indiaHour),
+        { replyToMessageId: message.message_id },
+      )
       return NextResponse.json({ ok: true })
     }
 
     const log = await createFoodLog({
       rawInput,
-      date: formatIndiaDate(new Date(message.date * 1000)),
+      date,
       id: telegramLogId(message.chat.id, message.message_id),
       transcript,
+      analysis: interpretation.analysis,
     })
 
     if (!log.coaching) throw new Error('Coach response was not available')
+    const logsAfter = await getFoodLogsForDate(date)
     await sendTelegramMessage(
       message.chat.id,
-      formatDailyCoachMessage(log.coaching, {
+      formatLiveCoachMessage(log.coaching, {
         calories: log.total_calories,
         protein: log.total_protein,
-      }, transcript)
+        carbs: log.total_carbs,
+        fat: log.total_fat,
+        fiber: (log.parsed_meals || []).reduce((sum, meal) => sum + (meal.fiber || 0), 0),
+      }, summarizeFoodLogs(logsAfter), indiaHour, transcript),
+      { replyToMessageId: message.message_id },
     )
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('Telegram webhook error:', error)
     await sendTelegramMessage(
       message.chat.id,
-      'I caught your note, but tripped while making sense of it. Nothing is wrong with your answer—please send it once more. 🌿'
+      'I caught your note, but tripped while making sense of it. Nothing is wrong with your answer—please send it once more. 🌿',
+      { replyToMessageId: message.message_id },
     ).catch(() => undefined)
     return NextResponse.json({ ok: true })
   }
