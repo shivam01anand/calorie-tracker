@@ -237,6 +237,11 @@ export function formatCoachReply(reply: CoachReply, summary: DailyFoodSummary, i
   return `💬 <b>${escapeHtml(reply.headline)}</b>\n${escapeHtml(reply.message)}${nextMove}${today}`
 }
 
+export function formatPrivateQuestionReply(answer: string) {
+  const safeAnswer = escapeHtml(answer.trim().slice(0, 3400))
+  return `🧠 <b>Private side quest</b>\n${safeAnswer}\n\n<i>Not added to your food log or Calypso’s memory.</i>`
+}
+
 export function formatNightCheckIn(hook: string, summary: DailyFoodSummary) {
   if (!summary.entries) {
     return `🌙 <b>Tiny night check-in</b>

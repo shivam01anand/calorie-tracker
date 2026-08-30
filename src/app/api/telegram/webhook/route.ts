@@ -11,12 +11,13 @@ import {
   getFoodLogsForDate,
   summarizeFoodLogs,
 } from '@/lib/food-log'
-import { interpretCoachInput, transcribeVoice } from '@/lib/gemini'
+import { answerPrivateQuestion, interpretCoachInput, transcribeVoice } from '@/lib/gemini'
 import { formatIndiaDate, getIndiaHour } from '@/lib/profile'
 import {
   downloadTelegramVoice,
   formatCoachReply,
   formatLiveCoachMessage,
+  formatPrivateQuestionReply,
   formatTodayCoachMessage,
   sendTelegramMessage,
   showTyping,
@@ -27,6 +28,14 @@ import {
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
+
+const SOL_LONG_INPUT_MIN_CHARS = 40
+
+function privateQuestionFrom(text?: string) {
+  const trimmed = text?.trim() || ''
+  if (!/^qq(?:\s|$)/i.test(trimmed)) return null
+  return trimmed.replace(/^qq(?:\s+|$)/i, '').trim()
+}
 
 function isAllowed(chatId: number) {
   const allowed = process.env.TELEGRAM_CHAT_ID
@@ -41,6 +50,8 @@ async function commandReply(chatId: number, command: string, messageId: number) 
 Text me whenever you eat—not just at night. Every update gets a macro estimate, your running day, and one useful next move.
 
 At 11 PM I’ll first check what’s already here, then ask if anything is missing. Messy text and voice notes both work.
+
+Start a message with <code>qq</code> for a private GPT-5.6 side question that I won’t save.
 
 No grades. No guilt. No “starting Monday.”`, replyOptions)
   }
@@ -68,6 +79,7 @@ These are coaching ranges, not medical prescriptions. We’ll learn from your re
 /today — today’s rough totals
 /goals — your current north star
 /retry — reprocess your last saved message
+qq your question — private GPT-5.6 answer, not saved
 /help — show this note`, replyOptions)
 }
 
@@ -101,12 +113,14 @@ async function processCoachInput({
   transcript,
   sourceMessageId = message.message_id,
   saveUserFirst = true,
+  preferSol = false,
 }: {
   message: TelegramMessage
   rawInput: string
   transcript?: string
   sourceMessageId?: number
   saveUserFirst?: boolean
+  preferSol?: boolean
 }) {
   const messageDate = new Date(message.date * 1000)
   const date = formatIndiaDate(messageDate)
@@ -130,7 +144,7 @@ async function processCoachInput({
     })
   }
   const memory = `${dailyCoachContext(logsBefore)}\n\nConversation earlier today:\n${coachConversationContext(conversationBefore)}`
-  const interpretation = await interpretCoachInput(rawInput, memory, indiaHour)
+  const interpretation = await interpretCoachInput(rawInput, memory, indiaHour, { preferSol })
   await saveCoachMessage({
     chatId: message.chat.id,
     date,
@@ -191,6 +205,7 @@ export async function POST(request: NextRequest) {
   const message = update.message
   if (!message) return NextResponse.json({ ok: true })
   if (!isAllowed(message.chat.id)) return NextResponse.json({ ok: true })
+  const privateQuestion = privateQuestionFrom(message.text)
 
   try {
     const command = message.text?.trim().split(/\s+/)[0].toLowerCase().split('@')[0]
@@ -240,6 +255,35 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true })
     }
 
+    if (privateQuestion !== null) {
+      await showTyping(message.chat.id).catch(() => undefined)
+      if (!privateQuestion) {
+        await sendTelegramMessage(
+          message.chat.id,
+          'Add your question after <code>qq</code>. Example: <code>qq is creatine worth it for me?</code>\n\n<i>This side quest won’t be saved.</i>',
+          { replyToMessageId: message.message_id },
+        )
+        return NextResponse.json({ ok: true })
+      }
+
+      try {
+        const answer = await answerPrivateQuestion(privateQuestion)
+        await sendTelegramMessage(
+          message.chat.id,
+          formatPrivateQuestionReply(answer),
+          { replyToMessageId: message.message_id },
+        )
+      } catch (error) {
+        console.error('Private GPT-5.6 question failed:', error instanceof Error ? error.message : 'Unknown error')
+        await sendTelegramMessage(
+          message.chat.id,
+          '🧠 The private side quest is temporarily unavailable. Nothing from it was saved—try the same <code>qq</code> again shortly.',
+          { replyToMessageId: message.message_id },
+        )
+      }
+      return NextResponse.json({ ok: true })
+    }
+
     await showTyping(message.chat.id)
     let rawInput = message.text?.trim() || ''
     let transcript: string | undefined
@@ -259,11 +303,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true })
     }
 
-    await processCoachInput({ message, rawInput, transcript })
+    await processCoachInput({
+      message,
+      rawInput,
+      transcript,
+      preferSol: rawInput.trim().length >= SOL_LONG_INPUT_MIN_CHARS,
+    })
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('Telegram webhook error:', error)
-    const errorMessage = 'Gemini is unusually busy, but your message is safely remembered. Send /retry and I’ll process it without making you type it again. 🌿'
+    if (privateQuestion !== null) {
+      await sendTelegramMessage(
+        message.chat.id,
+        '🧠 That private side quest tripped before it could answer. Nothing was saved—please try again shortly.',
+        { replyToMessageId: message.message_id },
+      ).catch(() => undefined)
+      return NextResponse.json({ ok: true })
+    }
+    const errorMessage = 'Calypso is unusually busy, but your message is safely remembered. Send /retry and I’ll process it without making you type it again. 🌿'
     await sendAndRemember({
       chatId: message.chat.id,
       date: formatIndiaDate(new Date(message.date * 1000)),
