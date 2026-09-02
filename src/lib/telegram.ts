@@ -93,7 +93,7 @@ const constellationLabels: Record<DayCoaching['constellation']['protein'], strin
   quiet: '○',
 }
 
-export function formatDailyCoachMessage(coaching: DayCoaching, totals: { calories: number; protein: number }, transcript?: string) {
+export function formatDailyCoachMessage(coaching: DayCoaching, totals: DayAnalysis['total'], transcript?: string) {
   const lights = Object.entries(coaching.constellation)
     .map(([name, state]) => `${constellationLabels[state]} ${name}`)
     .join('  ')
@@ -115,7 +115,7 @@ ${escapeHtml(coaching.gentle_truth)}
 ${escapeHtml(coaching.next_move)}
 
 ${lights}
-<i>Estimate: ${totals.protein}g protein · ${totals.calories} kcal. ${escapeHtml(coaching.confidence_note)}</i>${followUp}`.trim()
+<i>Estimate: ${totals.calories} kcal · P ${totals.protein}g · C ${totals.carbs}g · F ${totals.fat}g · Fi ${totals.fiber}g. ${escapeHtml(coaching.confidence_note)}</i>${followUp}`.trim()
 }
 
 type Signal = 'green' | 'amber' | 'red'
@@ -161,8 +161,9 @@ function dailyDashboard(summary: DailyFoodSummary, indiaHour: number) {
 
   return `${energy} Energy  ${progressBar(summary.calories, targets.calorieFloor)}  <b>${summary.calories}</b> / ${targets.calorieFloor}–${targets.calorieCeiling} kcal
 ${protein} Protein ${progressBar(summary.protein, targets.proteinFloorG)}  <b>${summary.protein}g</b> / ${targets.proteinFloorG}g floor
-${fiber} Fibre   ${progressBar(summary.fiber, targets.fiberFloorG)}  <b>${summary.fiber}g</b> / ~${targets.fiberFloorG}g
-<i>Carbs ${summary.carbs}g · Fat ${summary.fat}g</i>`
+• Carbs  <b>${summary.carbs}g</b>
+• Fat  <b>${summary.fat}g</b>
+${fiber} Fibre   ${progressBar(summary.fiber, targets.fiberFloorG)}  <b>${summary.fiber}g</b> / ~${targets.fiberFloorG}g`
 }
 
 function remainingToday(summary: DailyFoodSummary) {
