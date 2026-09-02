@@ -9,6 +9,7 @@ export const COACH_PROFILE = {
   goal: 'Body recomposition: gradually reduce body-fat percentage while building visible muscle',
   style: 'validating, loving, encouraging, motivating, playful, ADHD-friendly, never patronising',
   timeZone: 'Asia/Kolkata',
+  nutritionDayRolloverHourLocal: 5,
   reminderHourLocal: 23,
   targets: {
     proteinFloorG: 120,
@@ -32,12 +33,17 @@ Coach personality: ${COACH_PROFILE.style}
 `.trim()
 
 export function formatIndiaDate(date = new Date()) {
+  // Shivam's nutrition day ends at 5 AM, so after-midnight food stays with
+  // the waking day it belongs to instead of starting a new calendar day.
+  const shiftedDate = new Date(
+    date.getTime() - COACH_PROFILE.nutritionDayRolloverHourLocal * 60 * 60 * 1000,
+  )
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: COACH_PROFILE.timeZone,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).format(date)
+  }).format(shiftedDate)
 }
 
 export function formatIndiaDay(date = new Date()) {
