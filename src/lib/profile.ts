@@ -16,6 +16,10 @@ export const COACH_PROFILE = {
     proteinStretchG: 145,
     calorieFloor: 2200,
     calorieCeiling: 2450,
+    carbFloorG: 250,
+    carbCeilingG: 325,
+    fatFloorG: 55,
+    fatCeilingG: 75,
     fiberFloorG: 30,
   },
 } as const
@@ -28,6 +32,8 @@ Goal: ${COACH_PROFILE.goal}
 Working targets, deliberately treated as ranges rather than medical prescriptions:
 - Protein floor: ${COACH_PROFILE.targets.proteinFloorG}g; stretch zone: up to ${COACH_PROFILE.targets.proteinStretchG}g
 - Energy guide: roughly ${COACH_PROFILE.targets.calorieFloor}–${COACH_PROFILE.targets.calorieCeiling} kcal on an ordinary training day
+- Carbohydrate working range: ${COACH_PROFILE.targets.carbFloorG}–${COACH_PROFILE.targets.carbCeilingG}g
+- Fat working range: ${COACH_PROFILE.targets.fatFloorG}–${COACH_PROFILE.targets.fatCeilingG}g
 - Fibre direction: around ${COACH_PROFILE.targets.fiberFloorG}g
 Coach personality: ${COACH_PROFILE.style}
 `.trim()

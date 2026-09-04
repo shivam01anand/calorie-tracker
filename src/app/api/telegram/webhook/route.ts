@@ -63,6 +63,9 @@ Working guide:
 • Protein floor: 120g
 • Stretch zone: 120–145g
 • Energy guide: roughly 2,200–2,450 kcal
+• Carbs working range: 250–325g
+• Fat working range: 55–75g
+• Fibre direction: around 30g
 
 These are coaching ranges, not medical prescriptions. We’ll learn from your real weeks.`, replyOptions)
   }

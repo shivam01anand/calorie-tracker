@@ -127,7 +127,7 @@ const signalIcon: Record<Signal, string> = {
 }
 
 function metricSignal(
-  metric: 'energy' | 'protein' | 'fiber',
+  metric: 'energy' | 'protein' | 'carbs' | 'fat' | 'fiber',
   value: number,
   indiaHour: number,
 ): Signal {
@@ -140,6 +140,18 @@ function metricSignal(
   if (metric === 'fiber') {
     if (value >= targets.fiberFloorG) return 'green'
     if (indiaHour >= 20 && value < targets.fiberFloorG * 0.6) return 'red'
+    return 'amber'
+  }
+  if (metric === 'carbs') {
+    if (value >= targets.carbFloorG && value <= targets.carbCeilingG) return 'green'
+    if (value > targets.carbCeilingG * 1.2) return 'red'
+    if (indiaHour >= 22 && value < targets.carbFloorG * 0.6) return 'red'
+    return 'amber'
+  }
+  if (metric === 'fat') {
+    if (value >= targets.fatFloorG && value <= targets.fatCeilingG) return 'green'
+    if (value > targets.fatCeilingG * 1.2) return 'red'
+    if (indiaHour >= 22 && value < targets.fatFloorG * 0.6) return 'red'
     return 'amber'
   }
   if (value >= targets.calorieFloor && value <= targets.calorieCeiling) return 'green'
@@ -157,12 +169,14 @@ function dailyDashboard(summary: DailyFoodSummary, indiaHour: number) {
   const targets = COACH_PROFILE.targets
   const energy = signalIcon[metricSignal('energy', summary.calories, indiaHour)]
   const protein = signalIcon[metricSignal('protein', summary.protein, indiaHour)]
+  const carbs = signalIcon[metricSignal('carbs', summary.carbs, indiaHour)]
+  const fat = signalIcon[metricSignal('fat', summary.fat, indiaHour)]
   const fiber = signalIcon[metricSignal('fiber', summary.fiber, indiaHour)]
 
   return `${energy} Energy  ${progressBar(summary.calories, targets.calorieFloor)}  <b>${summary.calories}</b> / ${targets.calorieFloor}–${targets.calorieCeiling} kcal
 ${protein} Protein ${progressBar(summary.protein, targets.proteinFloorG)}  <b>${summary.protein}g</b> / ${targets.proteinFloorG}g floor
-• Carbs  <b>${summary.carbs}g</b>
-• Fat  <b>${summary.fat}g</b>
+${carbs} Carbs   ${progressBar(summary.carbs, targets.carbFloorG)}  <b>${summary.carbs}g</b> / ${targets.carbFloorG}–${targets.carbCeilingG}g
+${fat} Fat     ${progressBar(summary.fat, targets.fatFloorG)}  <b>${summary.fat}g</b> / ${targets.fatFloorG}–${targets.fatCeilingG}g
 ${fiber} Fibre   ${progressBar(summary.fiber, targets.fiberFloorG)}  <b>${summary.fiber}g</b> / ~${targets.fiberFloorG}g`
 }
 
